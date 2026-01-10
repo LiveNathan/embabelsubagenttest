@@ -114,7 +114,6 @@ public class IntentAgent {
     public record CommandState(UserIntent.Command command, AgentPlatform agentPlatform) implements IntentState {
         @Action
         public FinalState processCommand(Ai ai) {
-            // Inline command classification and handling
             CommandType commandType = ai.withAutoLlm()
                     .creating(CommandType.class)
                     .fromPrompt("""
@@ -128,7 +127,6 @@ public class IntentAgent {
 
                             Return the appropriate type.""".formatted(command.description()));
 
-            // Invoke the appropriate specialized agent using AgentInvocation
             String message = switch (commandType) {
                 case CommandType.BananaArt ignored -> invokeBananaArtAgent();
                 case CommandType.FortuneCookie ignored -> invokeFortuneCookieAgent();
