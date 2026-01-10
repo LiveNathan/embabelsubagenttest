@@ -7,6 +7,7 @@ import com.embabel.agent.api.annotation.RunSubagent;
 import com.embabel.agent.api.common.Ai;
 import com.embabel.agent.api.common.OperationContext;
 import com.embabel.agent.core.AgentPlatform;
+import com.embabel.agent.core.ProcessOptions;
 import com.embabel.agent.domain.io.UserInput;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
@@ -81,7 +82,7 @@ public class IntentAgent {
             tasks.add(CompletableFuture.supplyAsync(() -> {
                 var agentProcess = agentPlatform.createAgentProcessFrom(
                         commandAgentInstance,
-                        com.embabel.agent.core.ProcessOptions.DEFAULT,
+                        ProcessOptions.DEFAULT,
                         command
                 );
                 var completedProcess = agentProcess.run();
@@ -94,7 +95,7 @@ public class IntentAgent {
             tasks.add(CompletableFuture.supplyAsync(() -> {
                 var agentProcess = agentPlatform.createAgentProcessFrom(
                         queryAgentInstance,
-                        com.embabel.agent.core.ProcessOptions.DEFAULT,
+                        ProcessOptions.DEFAULT,
                         query
                 );
                 var completedProcess = agentProcess.run();
@@ -105,7 +106,7 @@ public class IntentAgent {
         // Wait for all tasks and collect responses
         List<AgentMessageResponse> responses = tasks.stream()
                 .map(CompletableFuture::join)
-                .collect(Collectors.toList());
+                .toList();
 
         // Consolidate all responses
         String consolidatedMessage = responses.stream()
