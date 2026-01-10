@@ -100,13 +100,13 @@ public class IntentAgent {
     String createClassifyIntentPrompt(UserInput userInput) {
         return String.format("""
                         Classify the user's intent:
-                        - COMMAND: User wants to change or edit something like channel names, colors, and routes
-                        - QUERY: User is asking a question about mixer's current state or requesting information
+                        - COMMAND: User wants to see banana ASCII art, get a fortune cookie message, or hear a dad joke
+                        - QUERY: User is asking a general question or requesting information
                         - UNKNOWN: User's intent is unclear or doesn't match the above categories
 
                         User message: %s
 
-                        Return Command with a clear description of what they want to change, Query with the question they're asking, or Unknown with the reason.""",
+                        Return Command with a clear description of what they want (banana art, fortune, or joke), Query with the question they're asking, or Unknown with the reason.""",
                 userInput.getContent()).trim();
     }
 }
