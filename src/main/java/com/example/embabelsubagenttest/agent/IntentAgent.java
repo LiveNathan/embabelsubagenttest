@@ -7,6 +7,7 @@ import com.embabel.agent.api.annotation.RunSubagent;
 import com.embabel.agent.api.common.Ai;
 import com.embabel.agent.api.common.OperationContext;
 import com.embabel.agent.core.AgentPlatform;
+import com.embabel.agent.core.AgentProcess;
 import com.embabel.agent.core.ProcessOptions;
 import com.embabel.agent.domain.io.UserInput;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
@@ -59,42 +60,35 @@ public class IntentAgent {
                 .fromPrompt(createClassifyIntentPrompt(userInput));
     }
 
-    /**
-     * Expands composite intent into individual intents and processes them in parallel
-     */
     @Action
     public CompositeIntentResult handleCompositeIntent(UserIntent.Composite composite, OperationContext context) {
         List<CompletableFuture<AgentMessageResponse>> tasks = new ArrayList<>();
 
-        // Process commands in parallel
         for (UserIntent.Command command : composite.commands()) {
             tasks.add(CompletableFuture.supplyAsync(() -> {
-                // Find the Agent wrapper for our injected commandAgent bean
                 var agentWrapper = agentPlatform.agents().stream()
                         .filter(a -> a.getName().equals(commandAgent.getClass().getSimpleName()))
                         .findFirst()
                         .orElseThrow(() -> new IllegalStateException("CommandAgent wrapper not found"));
 
-                var agentProcess = agentPlatform.createAgentProcessFrom(
+                AgentProcess agentProcess = agentPlatform.createAgentProcessFrom(
                         agentWrapper,
                         ProcessOptions.DEFAULT,
                         command
                 );
-                var completedProcess = agentProcess.run();
+                AgentProcess completedProcess = agentProcess.run();
                 return completedProcess.last(AgentMessageResponse.class);
             }));
         }
 
-        // Process queries in parallel
         for (UserIntent.Query query : composite.queries()) {
             tasks.add(CompletableFuture.supplyAsync(() -> {
-                // Find the Agent wrapper for our injected queryAgent bean
                 var agentWrapper = agentPlatform.agents().stream()
                         .filter(a -> a.getName().equals(queryAgent.getClass().getSimpleName()))
                         .findFirst()
                         .orElseThrow(() -> new IllegalStateException("QueryAgent wrapper not found"));
 
-                var agentProcess = agentPlatform.createAgentProcessFrom(
+                AgentProcess agentProcess = agentPlatform.createAgentProcessFrom(
                         agentWrapper,
                         ProcessOptions.DEFAULT,
                         query
@@ -104,12 +98,9 @@ public class IntentAgent {
             }));
         }
 
-        // Wait for all tasks and collect responses
         List<AgentMessageResponse> responses = tasks.stream()
                 .map(CompletableFuture::join)
                 .toList();
-
-        // Consolidate all responses
         String consolidatedMessage = responses.stream()
                 .map(AgentMessageResponse::message)
                 .collect(Collectors.joining("\n\n---\n\n"));
