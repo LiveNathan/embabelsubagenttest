@@ -1,13 +1,3 @@
-<img align="left" src="https://github.com/embabel/embabel-agent/blob/main/embabel-agent-api/images/315px-Meister_der_Weltenchronik_001.jpg?raw=true" width="180">
-
-# Embabel Agent Patterns Demo
-
-![Build](https://github.com/embabel/java-agent-template/actions/workflows/maven.yml/badge.svg)
-
-![Java](https://img.shields.io/badge/java-%23ED8B00.svg?style=for-the-badge&logo=openjdk&logoColor=white) ![Spring](https://img.shields.io/badge/spring-%236DB33F.svg?style=for-the-badge&logo=spring&logoColor=white) ![Apache Maven](https://img.shields.io/badge/Apache%20Maven-C71A36?style=for-the-badge&logo=Apache%20Maven&logoColor=white)
-
-<br clear="left"/>
-
 This project demonstrates advanced agent composition patterns using
 the [Embabel framework](https://github.com/embabel/embabel-agent).
 
@@ -131,15 +121,3 @@ intent "Why is the sky blue?"
 ```
 
 See [DemoShell.java](./src/main/java/com/example/embabelsubagenttest/DemoShell.java) for the implementation.
-
-## Model support
-
-Embabel integrates with any LLM supported by Spring AI.
-
-See [LLM integration guide](docs/llm-docs.md) (work in progress).
-
-Also see [Spring AI models](https://docs.spring.io/spring-ai/reference/api/index.html).
-
-## Contributors
-
-[![Embabel contributors](https://contrib.rocks/image?repo=embabel/java-agent-template)](https://github.com/embabel/java-agent-template/graphs/contributors)
