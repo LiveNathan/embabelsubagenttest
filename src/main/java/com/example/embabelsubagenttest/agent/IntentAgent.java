@@ -66,22 +66,17 @@ public class IntentAgent {
     public CompositeIntentResult handleCompositeIntent(UserIntent.Composite composite, OperationContext context) {
         List<CompletableFuture<AgentMessageResponse>> tasks = new ArrayList<>();
 
-        // Look up Agent instances from platform
-        var commandAgentInstance = agentPlatform.agents().stream()
-                .filter(a -> a.getName().equals("CommandAgent"))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("CommandAgent not found"));
-
-        var queryAgentInstance = agentPlatform.agents().stream()
-                .filter(a -> a.getName().equals("QueryAgent"))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("QueryAgent not found"));
-
         // Process commands in parallel
         for (UserIntent.Command command : composite.commands()) {
             tasks.add(CompletableFuture.supplyAsync(() -> {
+                // Find the Agent wrapper for our injected commandAgent bean
+                var agentWrapper = agentPlatform.agents().stream()
+                        .filter(a -> a.getName().equals(commandAgent.getClass().getSimpleName()))
+                        .findFirst()
+                        .orElseThrow(() -> new IllegalStateException("CommandAgent wrapper not found"));
+
                 var agentProcess = agentPlatform.createAgentProcessFrom(
-                        commandAgentInstance,
+                        agentWrapper,
                         ProcessOptions.DEFAULT,
                         command
                 );
@@ -93,8 +88,14 @@ public class IntentAgent {
         // Process queries in parallel
         for (UserIntent.Query query : composite.queries()) {
             tasks.add(CompletableFuture.supplyAsync(() -> {
+                // Find the Agent wrapper for our injected queryAgent bean
+                var agentWrapper = agentPlatform.agents().stream()
+                        .filter(a -> a.getName().equals(queryAgent.getClass().getSimpleName()))
+                        .findFirst()
+                        .orElseThrow(() -> new IllegalStateException("QueryAgent wrapper not found"));
+
                 var agentProcess = agentPlatform.createAgentProcessFrom(
-                        queryAgentInstance,
+                        agentWrapper,
                         ProcessOptions.DEFAULT,
                         query
                 );
