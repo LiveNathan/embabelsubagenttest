@@ -4,7 +4,6 @@ import com.embabel.agent.api.annotation.EmbabelComponent;
 import com.embabel.agent.api.common.Ai;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import org.springframework.beans.factory.annotation.Autowired;
 
 @EmbabelComponent
 public class CommandAgent {

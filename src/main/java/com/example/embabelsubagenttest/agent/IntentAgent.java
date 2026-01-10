@@ -11,11 +11,6 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 @Agent(description = "Routes user requests to the appropriate specialist agent")
 public class IntentAgent {
-    private final QueryAgent queryAgent;
-
-    public IntentAgent(QueryAgent queryAgent) {
-        this.queryAgent = queryAgent;
-    }
 
     public record IntentAgentResponse(String message) {
     }
@@ -105,27 +100,23 @@ public class IntentAgent {
         }
 
         private String generateFortune(Ai ai) {
-            AgentMessageResponse response = ai.withAutoLlm()
+            return ai.withAutoLlm()
                     .withId("generate-fortune")
-                    .creating(AgentMessageResponse.class)
-                    .fromPrompt("""
+                    .generateText("""
                             Generate a creative and inspiring fortune cookie message.
                             Make it wise, optimistic, and slightly mysterious.
                             Keep it under 30 words.
                             """);
-            return response.message();
         }
 
         private String tellJoke(Ai ai) {
-            AgentMessageResponse response = ai.withAutoLlm()
+            return ai.withAutoLlm()
                     .withId("tell-dad-joke")
-                    .creating(AgentMessageResponse.class)
-                    .fromPrompt("""
+                    .generateText("""
                             Tell a classic dad joke about programming or technology.
                             Make it wholesome and groan-worthy.
                             Include both the setup and punchline.
                             """);
-            return response.message();
         }
     }
 
