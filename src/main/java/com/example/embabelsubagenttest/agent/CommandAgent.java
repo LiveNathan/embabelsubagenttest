@@ -1,65 +1,47 @@
 package com.example.embabelsubagenttest.agent;
 
-import com.embabel.agent.api.annotation.AchievesGoal;
-import com.embabel.agent.api.annotation.Action;
-import com.embabel.agent.api.annotation.Agent;
-import com.embabel.agent.api.annotation.RunSubagent;
+import com.embabel.agent.api.annotation.EmbabelComponent;
 import com.embabel.agent.api.common.Ai;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import org.springframework.beans.factory.annotation.Autowired;
 
-@Agent(description = "Routes commands to specialized command handlers")
+@EmbabelComponent
 public class CommandAgent {
-    private final BananaArtAgent bananaArtAgent;
-    private final FortuneCookieAgent fortuneCookieAgent;
-    private final DadJokeAgent dadJokeAgent;
-
-    public CommandAgent(BananaArtAgent bananaArtAgent, FortuneCookieAgent fortuneCookieAgent, DadJokeAgent dadJokeAgent) {
-        this.bananaArtAgent = bananaArtAgent;
-        this.fortuneCookieAgent = fortuneCookieAgent;
-        this.dadJokeAgent = dadJokeAgent;
-    }
 
     public record CommandAgentResponse(String message) implements AgentMessageResponse {
     }
 
-    public interface CommandSubagentResponse {
-        String message();
-    }
-
-    public record UnknownCommandResponse(String message) implements CommandSubagentResponse {
-    }
-
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "commandType")
     @JsonSubTypes({
-            @JsonSubTypes.Type(value = CommandIntent.BananaArt.class, name = "BANANA_ART"),
-            @JsonSubTypes.Type(value = CommandIntent.FortuneCookie.class, name = "FORTUNE_COOKIE"),
-            @JsonSubTypes.Type(value = CommandIntent.DadJoke.class, name = "DAD_JOKE"),
-            @JsonSubTypes.Type(value = CommandIntent.Unknown.class, name = "UNKNOWN")
+            @JsonSubTypes.Type(value = CommandType.BananaArt.class, name = "BANANA_ART"),
+            @JsonSubTypes.Type(value = CommandType.FortuneCookie.class, name = "FORTUNE_COOKIE"),
+            @JsonSubTypes.Type(value = CommandType.DadJoke.class, name = "DAD_JOKE"),
+            @JsonSubTypes.Type(value = CommandType.Unknown.class, name = "UNKNOWN")
     })
-    public sealed interface CommandIntent {
-        record BananaArt(String description) implements CommandIntent {
+    public sealed interface CommandType {
+        record BananaArt() implements CommandType {
         }
 
-        record FortuneCookie(String description) implements CommandIntent {
+        record FortuneCookie() implements CommandType {
         }
 
-        record DadJoke(String description) implements CommandIntent {
+        record DadJoke() implements CommandType {
         }
 
-        record Unknown(String reason) implements CommandIntent {
+        record Unknown(String reason) implements CommandType {
         }
     }
 
-    @Action
-    public CommandIntent classifyCommand(IntentAgent.UserIntent.Command command, Ai ai) {
-        return ai.withAutoLlm()
-                .creating(CommandIntent.class)
-                .fromPrompt(createClassifyCommandPrompt(command));
-    }
-
-    String createClassifyCommandPrompt(IntentAgent.UserIntent.Command command) {
-        return String.format("""
+    /**
+     * Entry point for handling commands from IntentAgent.
+     * Classifies the command type and delegates to the appropriate handler.
+     */
+    public CommandAgentResponse handle(IntentAgent.UserIntent.Command command, Ai ai) {
+        // Classify the command type
+        CommandType commandType = ai.withAutoLlm()
+                .creating(CommandType.class)
+                .fromPrompt("""
                         Classify the user's command into one of these categories:
                         - BANANA_ART: User wants to see ASCII art of bananas
                         - FORTUNE_COOKIE: User wants a fortune cookie message or inspirational quote
@@ -68,27 +50,57 @@ public class CommandAgent {
 
                         User command: %s
 
-                        Return the appropriate type with a description or reason.""",
-                command.description()).trim();
-    }
+                        Return the appropriate type.""".formatted(command.description()));
 
-    @Action
-    public CommandSubagentResponse handleCommand(CommandIntent intent) {
-        return switch (intent) {
-            case CommandIntent.BananaArt bananaArt ->
-                    RunSubagent.fromAnnotatedInstance(bananaArtAgent, CommandSubagentResponse.class);
-            case CommandIntent.FortuneCookie fortuneCookie ->
-                    RunSubagent.fromAnnotatedInstance(fortuneCookieAgent, CommandSubagentResponse.class);
-            case CommandIntent.DadJoke dadJoke ->
-                    RunSubagent.fromAnnotatedInstance(dadJokeAgent, CommandSubagentResponse.class);
-            case CommandIntent.Unknown unknown ->
-                    new UnknownCommandResponse("Sorry, I don't understand that command: " + unknown.reason());
+        // Route to the appropriate handler
+        return switch (commandType) {
+            case CommandType.BananaArt ignored -> generateBananaArt();
+            case CommandType.FortuneCookie ignored -> generateFortune(ai);
+            case CommandType.DadJoke ignored -> tellJoke(ai);
+            case CommandType.Unknown unknown ->
+                    new CommandAgentResponse("Sorry, I don't understand that command: " + unknown.reason());
         };
     }
 
-    @AchievesGoal(description = "User command is executed")
-    @Action
-    public CommandAgentResponse done(CommandSubagentResponse response) {
-        return new CommandAgentResponse(response.message());
+    private CommandAgentResponse generateBananaArt() {
+        String art = """
+                 _
+                //\\
+                V  \\
+                 \\  \\_
+                  \\,'.`-.
+                   |\\ `. `.
+                   ( \\  `. `-.                        _,.-:\\
+                    \\ \\   `.  `-._             __..--' ,-';/
+                     \\ `.   `-.   `-..___..---'   _.--' ,'/
+                      `. `.    `-._        __..--'    ,' /
+                        `. `-_     ``--..''       _.-' ,'
+                          `-_ `-.___        __,--'   ,'
+                             `-.__  `----""\"    __.-'
+                hh                `--..____..--'
+                """;
+        return new CommandAgentResponse(art);
+    }
+
+    private CommandAgentResponse generateFortune(Ai ai) {
+        return ai.withAutoLlm()
+                .withId("generate-fortune")
+                .creating(CommandAgentResponse.class)
+                .fromPrompt("""
+                        Generate a creative and inspiring fortune cookie message.
+                        Make it wise, optimistic, and slightly mysterious.
+                        Keep it under 30 words.
+                        """);
+    }
+
+    private CommandAgentResponse tellJoke(Ai ai) {
+        return ai.withAutoLlm()
+                .withId("tell-dad-joke")
+                .creating(CommandAgentResponse.class)
+                .fromPrompt("""
+                        Tell a classic dad joke about programming or technology.
+                        Make it wholesome and groan-worthy.
+                        Include both the setup and punchline.
+                        """);
     }
 }

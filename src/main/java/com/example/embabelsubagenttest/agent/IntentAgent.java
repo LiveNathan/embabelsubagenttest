@@ -3,7 +3,7 @@ package com.example.embabelsubagenttest.agent;
 import com.embabel.agent.api.annotation.AchievesGoal;
 import com.embabel.agent.api.annotation.Action;
 import com.embabel.agent.api.annotation.Agent;
-import com.embabel.agent.api.annotation.RunSubagent;
+import com.embabel.agent.api.annotation.State;
 import com.embabel.agent.api.common.Ai;
 import com.embabel.agent.domain.io.UserInput;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
@@ -22,23 +22,79 @@ public class IntentAgent {
     public record IntentAgentResponse(String message) {
     }
 
-
-
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "intent")
-    @JsonSubTypes({@JsonSubTypes.Type(value = UserIntent.Command.class, name = "COMMAND"), @JsonSubTypes.Type(value = UserIntent.Query.class, name = "QUERY")})
+    @JsonSubTypes({
+            @JsonSubTypes.Type(value = UserIntent.Command.class, name = "COMMAND"),
+            @JsonSubTypes.Type(value = UserIntent.Query.class, name = "QUERY"),
+            @JsonSubTypes.Type(value = UserIntent.Unknown.class, name = "UNKNOWN")
+    })
     public sealed interface UserIntent {
         record Command(String description) implements UserIntent {
         }
 
         record Query(String question) implements UserIntent {
         }
+
+        record Unknown(String reason) implements UserIntent {
+        }
+    }
+
+    @State
+    public sealed interface IntentState {
+    }
+
+    @State
+    public record QueryState(UserIntent.Query query) implements IntentState {
+        @Action
+        public FinalState processQuery(Ai ai) {
+            QueryAgent.QuerySubagentResponse response = ai.withAutoLlm()
+                    .withId("respond-to-query")
+                    .creating(QueryAgent.QuerySubagentResponse.class)
+                    .fromPrompt("""
+                            You are a helpful assistant. Answer the user's question.
+
+                            User question: %s""".formatted(query.question()));
+            return new FinalState(response.message());
+        }
+    }
+
+    @State
+    public record CommandState(UserIntent.Command command) implements IntentState {
+        @Action
+        public FinalState processCommand(CommandAgent commandAgent, Ai ai) {
+            CommandAgent.CommandAgentResponse response = commandAgent.handle(command, ai);
+            return new FinalState(response.message());
+        }
+    }
+
+    @State
+    public record UnknownState(UserIntent.Unknown unknown) implements IntentState {
+        @Action
+        public FinalState handleUnknown() {
+            return new FinalState("I'm not sure what you're asking for: " + unknown.reason());
+        }
+    }
+
+    @State
+    public record FinalState(String message) implements IntentState {
+        @AchievesGoal(description = "User request satisfied")
+        @Action
+        public IntentAgentResponse complete() {
+            return new IntentAgentResponse(message);
+        }
     }
 
     @Action
-    public UserIntent classifyIntent(UserInput userInput, Ai ai) {
-        return ai.withAutoLlm()
+    public IntentState classifyAndRoute(UserInput userInput, Ai ai) {
+        UserIntent intent = ai.withAutoLlm()
                 .creating(UserIntent.class)
                 .fromPrompt(createClassifyIntentPrompt(userInput));
+
+        return switch (intent) {
+            case UserIntent.Query query -> new QueryState(query);
+            case UserIntent.Command command -> new CommandState(command);
+            case UserIntent.Unknown unknown -> new UnknownState(unknown);
+        };
     }
 
     String createClassifyIntentPrompt(UserInput userInput) {
@@ -46,43 +102,11 @@ public class IntentAgent {
                         Classify the user's intent:
                         - COMMAND: User wants to change or edit something like channel names, colors, and routes
                         - QUERY: User is asking a question about mixer's current state or requesting information
-                        
+                        - UNKNOWN: User's intent is unclear or doesn't match the above categories
+
                         User message: %s
-                        
-                        Return Command with a clear description of what they want to change, or Query with the question they're asking.""",
+
+                        Return Command with a clear description of what they want to change, Query with the question they're asking, or Unknown with the reason.""",
                 userInput.getContent()).trim();
     }
-
-    @Action
-    public AgentMessageResponse handleIntent(UserIntent intent) {
-        return switch (intent) {
-            case UserIntent.Query query -> RunSubagent.fromAnnotatedInstance(queryAgent, AgentMessageResponse.class);
-            case UserIntent.Command command -> RunSubagent.fromAnnotatedInstance(commandAgent, AgentMessageResponse.class);
-        };
-    }
-
-    public record TranslatedResponse(String message) {
-    }
-
-    @Action
-    public TranslatedResponse translateToPortuguese(AgentMessageResponse subagentResponse, Ai ai) {
-        return ai.withAutoLlm()
-                .withId("translate-to-portuguese")
-                .creating(TranslatedResponse.class)
-                .fromPrompt("""
-                        Translate the following response into Portuguese.
-                        Keep the same tone and style, but make it natural Portuguese.
-                        If there's ASCII art, keep it intact.
-
-                        Original response:
-                        %s""".formatted(subagentResponse.message()));
-    }
-
-    @AchievesGoal(description = "User request satisfied")
-    @Action
-    public IntentAgentResponse done(TranslatedResponse translatedResponse) {
-        return new IntentAgentResponse(translatedResponse.message());
-    }
-
-
 }
