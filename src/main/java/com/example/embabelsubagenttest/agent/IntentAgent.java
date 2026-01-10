@@ -12,11 +12,9 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 @Agent(description = "Routes user requests to the appropriate specialist agent")
 public class IntentAgent {
     private final QueryAgent queryAgent;
-    private final CommandAgent commandAgent;
 
-    public IntentAgent(QueryAgent queryAgent, CommandAgent commandAgent) {
+    public IntentAgent(QueryAgent queryAgent) {
         this.queryAgent = queryAgent;
-        this.commandAgent = commandAgent;
     }
 
     public record IntentAgentResponse(String message) {
@@ -61,9 +59,94 @@ public class IntentAgent {
     @State
     public record CommandState(UserIntent.Command command) implements IntentState {
         @Action
-        public FinalState processCommand(CommandAgent commandAgent, Ai ai) {
-            CommandAgent.CommandAgentResponse response = commandAgent.handle(command, ai);
-            return new FinalState(response.message());
+        public FinalState processCommand(Ai ai) {
+            // Inline command classification and handling
+            CommandType commandType = ai.withAutoLlm()
+                    .creating(CommandType.class)
+                    .fromPrompt("""
+                            Classify the user's command into one of these categories:
+                            - BANANA_ART: User wants to see ASCII art of bananas
+                            - FORTUNE_COOKIE: User wants a fortune cookie message or inspirational quote
+                            - DAD_JOKE: User wants to hear a joke
+                            - UNKNOWN: Command doesn't match any of the above
+
+                            User command: %s
+
+                            Return the appropriate type.""".formatted(command.description()));
+
+            String message = switch (commandType) {
+                case CommandType.BananaArt ignored -> generateBananaArt();
+                case CommandType.FortuneCookie ignored -> generateFortune(ai);
+                case CommandType.DadJoke ignored -> tellJoke(ai);
+                case CommandType.Unknown unknown ->
+                        "Sorry, I don't understand that command: " + unknown.reason();
+            };
+
+            return new FinalState(message);
+        }
+
+        private String generateBananaArt() {
+            return """
+                     _
+                    //\\
+                    V  \\
+                     \\  \\_
+                      \\,'.`-.
+                       |\\ `. `.
+                       ( \\  `. `-.                        _,.-:\\
+                        \\ \\   `.  `-._             __..--' ,-';/
+                         \\ `.   `-.   `-..___..---'   _.--' ,'/
+                          `. `.    `-._        __..--'    ,' /
+                            `. `-_     ``--..''       _.-' ,'
+                              `-_ `-.___        __,--'   ,'
+                                 `-.__  `----""\"    __.-'
+                    hh                `--..____..--'
+                    """;
+        }
+
+        private String generateFortune(Ai ai) {
+            AgentMessageResponse response = ai.withAutoLlm()
+                    .withId("generate-fortune")
+                    .creating(AgentMessageResponse.class)
+                    .fromPrompt("""
+                            Generate a creative and inspiring fortune cookie message.
+                            Make it wise, optimistic, and slightly mysterious.
+                            Keep it under 30 words.
+                            """);
+            return response.message();
+        }
+
+        private String tellJoke(Ai ai) {
+            AgentMessageResponse response = ai.withAutoLlm()
+                    .withId("tell-dad-joke")
+                    .creating(AgentMessageResponse.class)
+                    .fromPrompt("""
+                            Tell a classic dad joke about programming or technology.
+                            Make it wholesome and groan-worthy.
+                            Include both the setup and punchline.
+                            """);
+            return response.message();
+        }
+    }
+
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "commandType")
+    @JsonSubTypes({
+            @JsonSubTypes.Type(value = CommandType.BananaArt.class, name = "BANANA_ART"),
+            @JsonSubTypes.Type(value = CommandType.FortuneCookie.class, name = "FORTUNE_COOKIE"),
+            @JsonSubTypes.Type(value = CommandType.DadJoke.class, name = "DAD_JOKE"),
+            @JsonSubTypes.Type(value = CommandType.Unknown.class, name = "UNKNOWN")
+    })
+    public sealed interface CommandType {
+        record BananaArt() implements CommandType {
+        }
+
+        record FortuneCookie() implements CommandType {
+        }
+
+        record DadJoke() implements CommandType {
+        }
+
+        record Unknown(String reason) implements CommandType {
         }
     }
 
