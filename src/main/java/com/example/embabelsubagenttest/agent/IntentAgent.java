@@ -5,12 +5,20 @@ import com.embabel.agent.api.annotation.Action;
 import com.embabel.agent.api.annotation.Agent;
 import com.embabel.agent.api.annotation.State;
 import com.embabel.agent.api.common.Ai;
+import com.embabel.agent.api.invocation.AgentInvocation;
+import com.embabel.agent.core.AgentPlatform;
 import com.embabel.agent.domain.io.UserInput;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 @Agent(description = "Routes user requests to the appropriate specialist agent")
 public class IntentAgent {
+
+    private final AgentPlatform agentPlatform;
+
+    public IntentAgent(AgentPlatform agentPlatform) {
+        this.agentPlatform = agentPlatform;
+    }
 
     public record IntentAgentResponse(String message) {
     }
@@ -51,73 +59,17 @@ public class IntentAgent {
         }
     }
 
-    @State
-    public record CommandState(UserIntent.Command command) implements IntentState {
-        @Action
-        public FinalState processCommand(Ai ai) {
-            // Inline command classification and handling
-            CommandType commandType = ai.withAutoLlm()
-                    .creating(CommandType.class)
-                    .fromPrompt("""
-                            Classify the user's command into one of these categories:
-                            - BANANA_ART: User wants to see ASCII art of bananas
-                            - FORTUNE_COOKIE: User wants a fortune cookie message or inspirational quote
-                            - DAD_JOKE: User wants to hear a joke
-                            - UNKNOWN: Command doesn't match any of the above
+    @Action
+    public IntentState classifyAndRoute(UserInput userInput, Ai ai) {
+        UserIntent intent = ai.withAutoLlm()
+                .creating(UserIntent.class)
+                .fromPrompt(createClassifyIntentPrompt(userInput));
 
-                            User command: %s
-
-                            Return the appropriate type.""".formatted(command.description()));
-
-            String message = switch (commandType) {
-                case CommandType.BananaArt ignored -> generateBananaArt();
-                case CommandType.FortuneCookie ignored -> generateFortune(ai);
-                case CommandType.DadJoke ignored -> tellJoke(ai);
-                case CommandType.Unknown unknown ->
-                        "Sorry, I don't understand that command: " + unknown.reason();
-            };
-
-            return new FinalState(message);
-        }
-
-        private String generateBananaArt() {
-            return """
-                     _
-                    //\\
-                    V  \\
-                     \\  \\_
-                      \\,'.`-.
-                       |\\ `. `.
-                       ( \\  `. `-.                        _,.-:\\
-                        \\ \\   `.  `-._             __..--' ,-';/
-                         \\ `.   `-.   `-..___..---'   _.--' ,'/
-                          `. `.    `-._        __..--'    ,' /
-                            `. `-_     ``--..''       _.-' ,'
-                              `-_ `-.___        __,--'   ,'
-                                 `-.__  `----""\"    __.-'
-                    hh                `--..____..--'
-                    """;
-        }
-
-        private String generateFortune(Ai ai) {
-            return ai.withAutoLlm()
-                    .withId("generate-fortune")
-                    .generateText("""
-                            Generate a creative and inspiring fortune cookie message.
-                            Make it wise, optimistic, and slightly mysterious.
-                            Keep it under 30 words.
-                            """);
-        }
-
-        private String tellJoke(Ai ai) {
-            return ai.withAutoLlm()
-                    .withId("tell-dad-joke")
-                    .generateText("""
-                            Tell a classic dad joke about programming or technology.
-                            Make it wholesome and groan-worthy.
-                            Include both the setup and punchline.
-                            """);
-        }
+        return switch (intent) {
+            case UserIntent.Query query -> new QueryState(query);
+            case UserIntent.Command command -> new CommandState(command, agentPlatform);
+            case UserIntent.Unknown unknown -> new UnknownState(unknown);
+        };
     }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "commandType")
@@ -158,17 +110,56 @@ public class IntentAgent {
         }
     }
 
-    @Action
-    public IntentState classifyAndRoute(UserInput userInput, Ai ai) {
-        UserIntent intent = ai.withAutoLlm()
-                .creating(UserIntent.class)
-                .fromPrompt(createClassifyIntentPrompt(userInput));
+    @State
+    public record CommandState(UserIntent.Command command, AgentPlatform agentPlatform) implements IntentState {
+        @Action
+        public FinalState processCommand(Ai ai) {
+            // Inline command classification and handling
+            CommandType commandType = ai.withAutoLlm()
+                    .creating(CommandType.class)
+                    .fromPrompt("""
+                            Classify the user's command into one of these categories:
+                            - BANANA_ART: User wants to see ASCII art of bananas
+                            - FORTUNE_COOKIE: User wants a fortune cookie message or inspirational quote
+                            - DAD_JOKE: User wants to hear a joke
+                            - UNKNOWN: Command doesn't match any of the above
 
-        return switch (intent) {
-            case UserIntent.Query query -> new QueryState(query);
-            case UserIntent.Command command -> new CommandState(command);
-            case UserIntent.Unknown unknown -> new UnknownState(unknown);
-        };
+                            User command: %s
+
+                            Return the appropriate type.""".formatted(command.description()));
+
+            // Invoke the appropriate specialized agent using AgentInvocation
+            String message = switch (commandType) {
+                case CommandType.BananaArt ignored -> invokeBananaArtAgent();
+                case CommandType.FortuneCookie ignored -> invokeFortuneCookieAgent();
+                case CommandType.DadJoke ignored -> invokeDadJokeAgent();
+                case CommandType.Unknown unknown ->
+                        "Sorry, I don't understand that command: " + unknown.reason();
+            };
+
+            return new FinalState(message);
+        }
+
+        private String invokeBananaArtAgent() {
+            BananaArtAgent.ArtResponse response = AgentInvocation
+                    .create(agentPlatform, BananaArtAgent.ArtResponse.class)
+                    .invoke(new BananaArtAgent.ArtRequest(command.description()));
+            return response.message();
+        }
+
+        private String invokeFortuneCookieAgent() {
+            FortuneCookieAgent.FortuneResponse response = AgentInvocation
+                    .create(agentPlatform, FortuneCookieAgent.FortuneResponse.class)
+                    .invoke(new FortuneCookieAgent.FortuneRequest(command.description()));
+            return response.message();
+        }
+
+        private String invokeDadJokeAgent() {
+            DadJokeAgent.JokeResponse response = AgentInvocation
+                    .create(agentPlatform, DadJokeAgent.JokeResponse.class)
+                    .invoke(new DadJokeAgent.JokeRequest(command.description()));
+            return response.message();
+        }
     }
 
     String createClassifyIntentPrompt(UserInput userInput) {
