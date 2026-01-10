@@ -47,7 +47,7 @@ public class IntentAgent {
     @State
     public record QueryState(UserIntent.Query query) implements IntentState {
         @Action
-        public FinalState processQuery(Ai ai) {
+        public PreTranslationState processQuery(Ai ai) {
             QueryAgent.QuerySubagentResponse response = ai.withAutoLlm()
                     .withId("respond-to-query")
                     .creating(QueryAgent.QuerySubagentResponse.class)
@@ -55,7 +55,7 @@ public class IntentAgent {
                             You are a helpful assistant. Answer the user's question.
 
                             User question: %s""".formatted(query.question()));
-            return new FinalState(response.message());
+            return new PreTranslationState(response.message());
         }
     }
 
@@ -96,8 +96,25 @@ public class IntentAgent {
     @State
     public record UnknownState(UserIntent.Unknown unknown) implements IntentState {
         @Action
-        public FinalState handleUnknown() {
-            return new FinalState("I'm not sure what you're asking for: " + unknown.reason());
+        public PreTranslationState handleUnknown() {
+            return new PreTranslationState("I'm not sure what you're asking for: " + unknown.reason());
+        }
+    }
+
+    @State
+    public record PreTranslationState(String message) implements IntentState {
+        @Action
+        public FinalState translate(Ai ai) {
+            String translated = ai.withAutoLlm()
+                    .withId("translate-to-portuguese")
+                    .generateText("""
+                            Translate the following response into Portuguese.
+                            Keep the same tone and style, but make it natural Portuguese.
+                            If there's ASCII art, keep it intact.
+                            
+                            Original response:
+                            %s""".formatted(message));
+            return new FinalState(translated);
         }
     }
 
@@ -113,7 +130,7 @@ public class IntentAgent {
     @State
     public record CommandState(UserIntent.Command command, AgentPlatform agentPlatform) implements IntentState {
         @Action
-        public FinalState processCommand(Ai ai) {
+        public PreTranslationState processCommand(Ai ai) {
             CommandType commandType = ai.withAutoLlm()
                     .creating(CommandType.class)
                     .fromPrompt("""
@@ -135,7 +152,7 @@ public class IntentAgent {
                         "Sorry, I don't understand that command: " + unknown.reason();
             };
 
-            return new FinalState(message);
+            return new PreTranslationState(message);
         }
 
         private String invokeBananaArtAgent() {
