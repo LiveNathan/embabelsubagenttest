@@ -49,38 +49,40 @@ The system now supports composite requests that combine multiple intents:
 ```mermaid
 stateDiagram-v2
     [*] --> Classify: User Input
+
     state "IntentAgent (State Machine)" as Router {
 Classify --> QueryState: Intent = QUERY
 Classify --> CommandState: Intent = COMMAND
+Classify --> MultiIntentState: Intent = MULTIPLE
 Classify --> UnknownState: Intent = UNKNOWN
 
-state QueryState {
-ProcessQuery --> QueryAgent: Invoke Sub-Agent
+state MultiIntentState {
+state fork_parallel <<fork>>
+[*] --> fork_parallel
+
+fork_parallel --> QueryAgent: Execute Query
+fork_parallel --> SpecialistAgent: Execute Command(s)
+
+state join_parallel <<join>>
+QueryAgent --> join_parallel
+SpecialistAgent --> join_parallel
+join_parallel --> [*]
 }
 
 state CommandState {
-ClassifyCommand --> BananaArt: Type = BANANA_ART
-ClassifyCommand --> FortuneCookie: Type = FORTUNE
-ClassifyCommand --> DadJoke: Type = DAD_JOKE
-
-BananaArt --> BananaArtAgent: Invoke Sub-Agent
-FortuneCookie --> FortuneCookieAgent: Invoke Sub-Agent
-DadJoke --> DadJokeAgent: Invoke Sub-Agent
-}
-
-state UnknownState {
-HandleUnknown --> PreTranslationState
+ClassifyCommand --> BananaArtAgent
+ClassifyCommand --> FortuneCookieAgent
+ClassifyCommand --> DadJokeAgent
 }
  }
 
-QueryAgent --> PreTranslationState
-BananaArtAgent --> PreTranslationState
-FortuneCookieAgent --> PreTranslationState
-DadJokeAgent --> PreTranslationState
+QueryState --> PreTranslationState
+CommandState --> PreTranslationState
+MultiIntentState --> PreTranslationState
+UnknownState --> PreTranslationState
 
 PreTranslationState --> FinalState: Translate to Portuguese
-
-FinalState --> [*]: Return Response
+FinalState --> [*]: Return Combined Response
 ```
 
 ### 2. Hierarchical Subagent Pattern (Main Branch)
