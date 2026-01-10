@@ -5,27 +5,28 @@ Uses Spring Boot 3.5.9 and Embabel 0.3.1.
 
 It highlights two different approaches to building complex, multi-agent systems:
 
-1. **State Machine Pattern** (Current Branch): Explicit state modeling for robust intent handling.
+1. **GOAP with Parallel Processing** (Current Branch): Deterministic planning with concurrent sub-agent execution.
 2. **Subagent/Supervisor Pattern** (Main Branch): LLM-driven orchestration.
 
 ## Architecture Patterns
 
-### 1. State Machine Pattern (Current Branch)
+### 1. GOAP with Parallel Processing Pattern (Current Branch)
 
-This branch implements the **State Machine** pattern using Embabel's `@State` API with **parallel processing support**
-for composite intents.
+This branch implements agent composition using Embabel's **GOAP (Goal-Oriented Action Planning)** with **parallel
+processing support** for composite intents.
 
-* **Entry Point:** `IntentAgent` acts as the state machine host.
+* **Entry Point:** `IntentAgent` coordinates all user requests.
 * **Logic:**
-    1. **Classification:** The initial state classifies the user's intent (Command, Query, Multiple, or Unknown).
-    2. **Transition:** The system transitions to a specific typed state (e.g., `CommandState`, `QueryState`,
-       `MultiIntentState`).
-    3. **Parallel Execution:** For composite intents, multiple sub-agents execute concurrently using
-       `CompletableFuture`.
-    4. **Execution:** Inside the state, further logic (like finer-grained classification) occurs before invoking a
-       sub-agent using `AgentInvocation`.
-* **Benefits:** Highly deterministic, type-safe, easy to visualize, and performant with parallel execution. The flow is
-  enforced by state transitions.
+    1. **Classification:** LLM classifies the user's intent into a sealed interface hierarchy (`Command`, `Query`, or
+       `Composite`).
+    2. **GOAP Routing:** The planner selects the appropriate `@Action` handler based on the specific intent type on the
+       blackboard.
+    3. **Parallel Execution:** For composite intents, `handleCompositeIntent` spawns multiple sub-agent processes
+       concurrently using `CompletableFuture` and `AgentPlatform`.
+    4. **Sub-agent Invocation:** Individual commands/queries use `RunSubagent.fromAnnotatedInstance()` for sequential
+       execution, while composite intents use `agentPlatform.createAgentProcessFrom()` for parallel execution.
+* **Benefits:** Highly deterministic, type-safe, leverages GOAP's planning capabilities, and achieves true parallel
+  performance for composite requests.
 
 #### Parallel Processing Features
 
@@ -46,41 +47,89 @@ The system now supports composite requests that combine multiple intents:
 - Easy testing and debugging
 - True parallel performance gains
 
+#### Technical Implementation Details
+
+The `IntentAgent` uses a sealed interface hierarchy for type-safe intent classification:
+
+```java
+
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "intent")
+@JsonSubTypes({
+        @JsonSubTypes.Type(value = UserIntent.Command.class, name = "COMMAND"),
+        @JsonSubTypes.Type(value = UserIntent.Query.class, name = "QUERY"),
+        @JsonSubTypes.Type(value = UserIntent.Composite.class, name = "COMPOSITE")
+})
+public sealed interface UserIntent {
+    record Command(String description) implements UserIntent {
+    }
+
+    record Query(String question) implements UserIntent {
+    }
+
+    record Composite(List<Command> commands, List<Query> queries) implements UserIntent {
+    }
+}
+```
+
+**GOAP Routing**: The framework's planner automatically selects the correct handler based on the specific type:
+
+- `handleCommand(UserIntent.Command)` → Delegates to CommandAgent sequentially
+- `handleQuery(UserIntent.Query)` → Delegates to QueryAgent sequentially
+- `handleCompositeIntent(UserIntent.Composite)` → Spawns parallel sub-agent processes
+
+**Parallel Execution Pattern**: For composite intents, the implementation:
+
+1. Looks up registered Agent instances from AgentPlatform
+2. Creates CompletableFuture tasks for each command/query
+3. Uses `agentPlatform.createAgentProcessFrom()` to spawn independent agent processes
+4. Calls `agentProcess.run()` asynchronously
+5. Joins all futures and consolidates responses with a separator (`\n\n---\n\n`)
+
 ```mermaid
 stateDiagram-v2
-    [*] --> Classify: User Input
-    state "IntentAgent (State Machine)" as Router {
-Classify --> QueryState: Intent = QUERY
-Classify --> CommandState: Intent = COMMAND
-Classify --> UnknownState: Intent = UNKNOWN
+    [*] --> classifyIntent: User Input
+    state "IntentAgent (GOAP Orchestrator)" as Router {
+classifyIntent --> handleQuery: UserIntent.Query
+classifyIntent --> handleCommand: UserIntent.Command
+classifyIntent --> handleCompositeIntent: UserIntent.Composite
 
-state QueryState {
-ProcessQuery --> QueryAgent: Invoke Sub-Agent
+state handleCompositeIntent {
+state fork_parallel <<fork>>
+[*] --> fork_parallel: Parse commands & queries
+
+fork_parallel --> CommandAgent1: Command 1 (async)
+fork_parallel --> CommandAgent2: Command 2 (async)
+fork_parallel --> QueryAgent1: Query 1 (async)
+
+state join_parallel <<join>>
+CommandAgent1 --> join_parallel
+CommandAgent2 --> join_parallel
+QueryAgent1 --> join_parallel
+
+join_parallel --> [*]: Consolidated Response
 }
 
-state CommandState {
-ClassifyCommand --> BananaArt: Type = BANANA_ART
-ClassifyCommand --> FortuneCookie: Type = FORTUNE
-ClassifyCommand --> DadJoke: Type = DAD_JOKE
+state handleCommand {
+[*] --> CommandAgent: RunSubagent
 
-BananaArt --> BananaArtAgent: Invoke Sub-Agent
-FortuneCookie --> FortuneCookieAgent: Invoke Sub-Agent
-DadJoke --> DadJokeAgent: Invoke Sub-Agent
+state CommandAgent {
+classifyCommand --> BananaArtAgent
+classifyCommand --> FortuneCookieAgent
+classifyCommand --> DadJokeAgent
+}
+CommandAgent --> [*]
 }
 
-state UnknownState {
-HandleUnknown --> PreTranslationState
+handleQuery --> QueryAgent: RunSubagent
+QueryAgent --> handleQuery
 }
- }
 
-QueryAgent --> PreTranslationState
-BananaArtAgent --> PreTranslationState
-FortuneCookieAgent --> PreTranslationState
-DadJokeAgent --> PreTranslationState
+handleQuery --> translateToPortuguese
+handleCommand --> translateToPortuguese
+handleCompositeIntent --> translateToPortuguese
 
-PreTranslationState --> FinalState: Translate to Portuguese
-
-FinalState --> [*]: Return Response
+translateToPortuguese --> done
+done --> [*]: IntentAgentResponse
 ```
 
 ### 2. Hierarchical Subagent Pattern (Main Branch)
