@@ -1,4 +1,4 @@
-package com.example.embabelsubagenttest.agent;
+package com.example.embabelsubagenttest.agent.scattergather;
 
 import com.embabel.agent.api.common.SomeOf;
 import org.springframework.lang.Nullable;
@@ -10,11 +10,14 @@ import org.springframework.lang.Nullable;
 public class CommandTypes {
 
     // Request types (input to services)
-    public record BananaArtRequest(String description) {}
+    public record BananaArtRequest(String description) {
+    }
 
-    public record FortuneRequest(String description) {}
+    public record FortuneRequest(String description) {
+    }
 
-    public record JokeRequest(String description) {}
+    public record JokeRequest(String description) {
+    }
 
     /**
      * CommandRequest implements SomeOf - LLM populates applicable fields.
@@ -90,5 +93,6 @@ public class CommandTypes {
             @Nullable BananaArtResult bananaArt,
             @Nullable FortuneResult fortune,
             @Nullable JokeResult joke
-    ) {}
+    ) {
+    }
 }

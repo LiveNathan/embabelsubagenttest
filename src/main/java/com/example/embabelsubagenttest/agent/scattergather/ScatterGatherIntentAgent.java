@@ -1,4 +1,4 @@
-package com.example.embabelsubagenttest.agent;
+package com.example.embabelsubagenttest.agent.scattergather;
 
 import com.embabel.agent.api.annotation.AchievesGoal;
 import com.embabel.agent.api.annotation.Action;
@@ -15,17 +15,15 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
  * CommandOrchestrator uses ScatterGatherBuilder internally for parallel service execution.
  */
 @Agent(description = "Routes user requests to the appropriate specialist agent")
-public class IntentAgent {
+public class ScatterGatherIntentAgent {
 
     private final CommandOrchestrator commandOrchestrator;
-    private final QueryAgent queryAgent;
+    private final ScatterGatherQueryAgent queryAgent;
 
-    public IntentAgent(CommandOrchestrator commandOrchestrator, QueryAgent queryAgent) {
+    public ScatterGatherIntentAgent(CommandOrchestrator commandOrchestrator, ScatterGatherQueryAgent queryAgent) {
         this.commandOrchestrator = commandOrchestrator;
         this.queryAgent = queryAgent;
     }
-
-    public record IntentAgentResponse(String message) {}
 
     @Action
     public UserIntent classifyIntent(UserInput userInput, Ai ai) {
@@ -41,15 +39,15 @@ public class IntentAgent {
                         - QUERY: User is asking a general question or requesting information (single question)
                         - MULTIPLE: User has BOTH a command AND a question (e.g., "show me a banana and tell me where they come from")
                         - UNKNOWN: User's intent is unclear or doesn't match the above categories
-
+                        
                         User message: %s
-
+                        
                         Examples:
                         - "Show me a banana" -> COMMAND
                         - "Where do bananas come from?" -> QUERY
                         - "Show me a banana and tell me where they come from" -> MULTIPLE
                         - "Tell me a joke and explain why it's funny" -> MULTIPLE
-
+                        
                         Return:
                         - Command with a clear description of what they want (banana art, fortune, or joke)
                         - Query with the question they're asking
@@ -65,7 +63,7 @@ public class IntentAgent {
             case UserIntent.Command command -> RunSubagent
                     .fromAnnotatedInstance(commandOrchestrator, CommandOrchestrator.CommandOrchestratorResponse.class);
             case UserIntent.Query query -> RunSubagent
-                    .fromAnnotatedInstance(queryAgent, QueryAgent.QuerySubagentResponse.class);
+                    .fromAnnotatedInstance(queryAgent, ScatterGatherQueryAgent.QuerySubagentResponse.class);
             case UserIntent.Unknown unknown ->
                     new UnknownResponse("I'm not sure what you're asking for: " + unknown.reason());
             case UserIntent.Multiple multiple -> new MultipleIntentsResponse(
@@ -95,16 +93,6 @@ public class IntentAgent {
         return new IntentAgentResponse(translated.message());
     }
 
-    // Response types
-    public record TranslatedResponse(String message) {
-    }
-
-    public record UnknownResponse(String message) implements AgentMessageResponse {
-    }
-
-    public record MultipleIntentsResponse(String message) implements AgentMessageResponse {
-    }
-
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "intent")
     @JsonSubTypes({
             @JsonSubTypes.Type(value = UserIntent.Command.class, name = "COMMAND"),
@@ -113,9 +101,29 @@ public class IntentAgent {
             @JsonSubTypes.Type(value = UserIntent.Multiple.class, name = "MULTIPLE")
     })
     public sealed interface UserIntent {
-        record Command(String description) implements UserIntent {}
-        record Query(String question) implements UserIntent {}
-        record Unknown(String reason) implements UserIntent {}
-        record Multiple(String commandDescription, String queryQuestion) implements UserIntent {}
+        record Command(String description) implements UserIntent {
+        }
+
+        record Query(String question) implements UserIntent {
+        }
+
+        record Unknown(String reason) implements UserIntent {
+        }
+
+        record Multiple(String commandDescription, String queryQuestion) implements UserIntent {
+        }
+    }
+
+    public record IntentAgentResponse(String message) {
+    }
+
+    // Response types
+    public record TranslatedResponse(String message) {
+    }
+
+    public record UnknownResponse(String message) implements AgentMessageResponse {
+    }
+
+    public record MultipleIntentsResponse(String message) implements AgentMessageResponse {
     }
 }

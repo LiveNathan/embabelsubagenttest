@@ -1,4 +1,4 @@
-package com.example.embabelsubagenttest.agent;
+package com.example.embabelsubagenttest.agent.scattergather;
 
 import com.embabel.agent.api.annotation.AchievesGoal;
 import com.embabel.agent.api.annotation.Action;
@@ -6,7 +6,7 @@ import com.embabel.agent.api.annotation.Agent;
 import com.embabel.agent.api.common.ActionContext;
 import com.embabel.agent.api.common.Ai;
 import com.embabel.agent.api.common.workflow.control.ScatterGatherBuilder;
-import com.example.embabelsubagenttest.agent.CommandTypes.*;
+import com.example.embabelsubagenttest.agent.scattergather.CommandTypes.*;
 import com.example.embabelsubagenttest.service.BananaArtService;
 import com.example.embabelsubagenttest.service.FortuneService;
 import com.example.embabelsubagenttest.service.JokeService;
@@ -35,33 +35,31 @@ public class CommandOrchestrator {
         this.jokeService = jokeService;
     }
 
-    public record CommandOrchestratorResponse(String message) implements AgentMessageResponse {}
-
     /**
      * Classifies the command to determine which services to invoke.
      * Uses SomeOf pattern - LLM populates only applicable fields.
      */
     @Action
-    public CommandRequest classifyCommand(IntentAgent.UserIntent.Command command, Ai ai) {
+    public CommandRequest classifyCommand(ScatterGatherIntentAgent.UserIntent.Command command, Ai ai) {
         return ai.withAutoLlm()
                 .withId("classify-command")
                 .creating(CommandRequest.class)
                 .fromPrompt("""
                         Analyze the user's command and determine which services should be invoked.
                         You can populate one or more of the following fields:
-
+                        
                         - bananaArt: If the user wants ASCII art of a banana
                         - fortune: If the user wants a fortune cookie message or inspirational quote
                         - joke: If the user wants a dad joke
-
+                        
                         User command: %s
-
+                        
                         Examples:
                         - "Show me a banana" → populate only bananaArt with description
                         - "Tell me a joke" → populate only joke with description
                         - "Show me a banana and tell me a joke" → populate both bananaArt and joke
                         - "Give me a fortune, a banana, and a joke" → populate all three
-
+                        
                         For each applicable service, provide a description extracted from the user's request.
                         Leave other fields null.""".formatted(command.description()));
     }
@@ -184,5 +182,8 @@ public class CommandOrchestrator {
         }
 
         return new CommandOrchestratorResponse(response.toString());
+    }
+
+    public record CommandOrchestratorResponse(String message) implements AgentMessageResponse {
     }
 }

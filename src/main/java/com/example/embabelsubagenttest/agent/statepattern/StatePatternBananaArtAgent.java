@@ -1,46 +1,39 @@
-package com.example.embabelsubagenttest.service;
+package com.example.embabelsubagenttest.agent.statepattern;
 
+import com.embabel.agent.api.annotation.AchievesGoal;
+import com.embabel.agent.api.annotation.Action;
+import com.embabel.agent.api.annotation.Agent;
 import com.embabel.agent.api.common.Ai;
-import com.example.embabelsubagenttest.agent.scattergather.CommandTypes.BananaArtRequest;
-import com.example.embabelsubagenttest.agent.scattergather.CommandTypes.BananaArtResult;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import org.springframework.stereotype.Component;
 
-/**
- * Service for generating ASCII art of bananas.
- * Plain Spring Component (not an @Agent) - designed to be called from CommandOrchestrator.
- */
-@Component
-public class BananaArtService {
+@Agent(description = "Generates ASCII art of fruits with various styles and sizes")
+public class StatePatternBananaArtAgent {
 
-    public BananaArtResult generate(BananaArtRequest request, Ai ai) {
-        try {
-            // Classify the style preference
-            ArtStyle style = ai.withAutoLlm()
-                    .withId("classify-art-style")
-                    .creating(ArtStyle.class)
-                    .fromPrompt("""
-                            Classify the user's art style preference:
-                            - CLASSIC: Traditional detailed ASCII art (default if not specified)
-                            - SIMPLE: Minimalist, small ASCII art
-                            - DETAILED: Complex, large ASCII art with fine details
+    @AchievesGoal(description = "ASCII art generated")
+    @Action
+    public ArtResponse generateArt(ArtRequest request, Ai ai) {
+        // Classify the style preference
+        ArtStyle style = ai.withAutoLlm()
+                .withId("classify-art-style")
+                .creating(ArtStyle.class)
+                .fromPrompt("""
+                        Classify the user's art style preference:
+                        - CLASSIC: Traditional detailed ASCII art (default if not specified)
+                        - SIMPLE: Minimalist, small ASCII art
+                        - DETAILED: Complex, large ASCII art with fine details
+                        
+                        User request: %s
+                        
+                        Return the appropriate style.""".formatted(request.description()));
 
-                            User request: %s
+        String art = switch (style) {
+            case ArtStyle.Classic ignored -> generateClassicBanana();
+            case ArtStyle.Simple ignored -> generateSimpleBanana();
+            case ArtStyle.Detailed ignored -> generateDetailedBanana();
+        };
 
-                            Return the appropriate style.""".formatted(request.description()));
-
-            String art = switch (style) {
-                case ArtStyle.Classic ignored -> generateClassicBanana();
-                case ArtStyle.Simple ignored -> generateSimpleBanana();
-                case ArtStyle.Detailed ignored -> generateDetailedBanana();
-            };
-
-            return BananaArtResult.success(art);
-
-        } catch (Exception e) {
-            return BananaArtResult.error("Failed to generate banana art: " + e.getMessage());
-        }
+        return new ArtResponse(art);
     }
 
     private String generateClassicBanana() {
@@ -104,8 +97,23 @@ public class BananaArtService {
             @JsonSubTypes.Type(value = ArtStyle.Detailed.class, name = "DETAILED")
     })
     public sealed interface ArtStyle {
-        record Classic() implements ArtStyle {}
-        record Simple() implements ArtStyle {}
-        record Detailed() implements ArtStyle {}
+        record Classic() implements ArtStyle {
+        }
+
+        record Simple() implements ArtStyle {
+        }
+
+        record Detailed() implements ArtStyle {
+        }
+    }
+
+    public record ArtRequest(String description) {
+    }
+
+    public record ArtResponse(String art) implements AgentMessageResponse {
+        @Override
+        public String message() {
+            return art;
+        }
     }
 }

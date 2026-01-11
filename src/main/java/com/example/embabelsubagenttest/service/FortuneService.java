@@ -1,8 +1,8 @@
 package com.example.embabelsubagenttest.service;
 
 import com.embabel.agent.api.common.Ai;
-import com.example.embabelsubagenttest.agent.CommandTypes.FortuneRequest;
-import com.example.embabelsubagenttest.agent.CommandTypes.FortuneResult;
+import com.example.embabelsubagenttest.agent.scattergather.CommandTypes.FortuneRequest;
+import com.example.embabelsubagenttest.agent.scattergather.CommandTypes.FortuneResult;
 import org.springframework.stereotype.Component;
 
 /**
