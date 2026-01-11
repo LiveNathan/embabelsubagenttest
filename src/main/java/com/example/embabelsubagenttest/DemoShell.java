@@ -4,7 +4,6 @@ import com.embabel.agent.api.invocation.AgentInvocation;
 import com.embabel.agent.core.AgentPlatform;
 import com.embabel.agent.domain.io.UserInput;
 import com.example.embabelsubagenttest.agent.hierarchical.HierarchicalIntentAgent;
-import com.example.embabelsubagenttest.agent.orchestrated.OrchestratedIntentAgent;
 import com.example.embabelsubagenttest.agent.scattergather.ScatterGatherIntentAgent;
 import com.example.embabelsubagenttest.agent.statepattern.StatePatternIntentAgent;
 import org.springframework.shell.standard.ShellComponent;
@@ -33,14 +32,6 @@ record DemoShell(AgentPlatform agentPlatform) {
     String intentScatterGather(final String content) {
         ScatterGatherIntentAgent.IntentAgentResponse response = AgentInvocation
                 .create(agentPlatform, ScatterGatherIntentAgent.IntentAgentResponse.class)
-                .invoke(new UserInput(content));
-        return response.message();
-    }
-
-    @ShellMethod("Orchestrated Intent (Task Decomposition)")
-    String intentOrchestrated(final String content) {
-        OrchestratedIntentAgent.FinalResponse response = AgentInvocation
-                .create(agentPlatform, OrchestratedIntentAgent.FinalResponse.class)
                 .invoke(new UserInput(content));
         return response.message();
     }
