@@ -22,10 +22,10 @@ public class OrchestratedIntentAgent {
     }
 
     @Action
-    public String routeIntent(String userMessage, ActionContext context) {
+    public FinalResponse routeIntent(String userMessage, ActionContext context) {
         UserIntent intent = classifyIntent(userMessage, context);
 
-        return switch (intent) {
+        String message = switch (intent) {
             case UserIntent.Command c -> {
                 var response = commandAgent.handleCommand(c.description(), context);
                 yield response.message();
@@ -36,7 +36,10 @@ public class OrchestratedIntentAgent {
             }
             case UserIntent.Unknown u -> u.message();
         };
+        return new FinalResponse(message);
     }
+
+    public record FinalResponse(String message) {}
 
     private UserIntent classifyIntent(String message, ActionContext context) {
         return context.ai().withAutoLlm()
