@@ -9,7 +9,7 @@ public class HierarchicalBananaArtAgent {
     @AchievesGoal(description = "ASCII art created")
     @Action
     public BananaArtResponse createBananaArt(HierarchicalCommandAgent.CommandIntent.BananaArt request) {
-        String art = """
+        String art = String.format("""
                  _
                 //\\
                 V  \\
@@ -24,7 +24,7 @@ public class HierarchicalBananaArtAgent {
                           `-_ `-.___        __,--'   ,'
                              `-.__  `----""\"    __.-'
                 hh                `--..____..--'
-                """;
+                request: %s""", request);
         return new BananaArtResponse(art);
     }
 
