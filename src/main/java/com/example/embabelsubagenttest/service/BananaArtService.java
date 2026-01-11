@@ -1,39 +1,46 @@
-package com.example.embabelsubagenttest.agent;
+package com.example.embabelsubagenttest.service;
 
-import com.embabel.agent.api.annotation.AchievesGoal;
-import com.embabel.agent.api.annotation.Action;
-import com.embabel.agent.api.annotation.Agent;
 import com.embabel.agent.api.common.Ai;
+import com.example.embabelsubagenttest.agent.CommandTypes.BananaArtRequest;
+import com.example.embabelsubagenttest.agent.CommandTypes.BananaArtResult;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import org.springframework.stereotype.Component;
 
-@Agent(description = "Generates ASCII art of fruits with various styles and sizes")
-public class BananaArtAgent {
+/**
+ * Service for generating ASCII art of bananas.
+ * Plain Spring Component (not an @Agent) - designed to be called from CommandOrchestrator.
+ */
+@Component
+public class BananaArtService {
 
-    @AchievesGoal(description = "ASCII art generated")
-    @Action
-    public ArtResponse generateArt(ArtRequest request, Ai ai) {
-        // Classify the style preference
-        ArtStyle style = ai.withAutoLlm()
-                .withId("classify-art-style")
-                .creating(ArtStyle.class)
-                .fromPrompt("""
-                        Classify the user's art style preference:
-                        - CLASSIC: Traditional detailed ASCII art (default if not specified)
-                        - SIMPLE: Minimalist, small ASCII art
-                        - DETAILED: Complex, large ASCII art with fine details
-                        
-                        User request: %s
-                        
-                        Return the appropriate style.""".formatted(request.description()));
+    public BananaArtResult generate(BananaArtRequest request, Ai ai) {
+        try {
+            // Classify the style preference
+            ArtStyle style = ai.withAutoLlm()
+                    .withId("classify-art-style")
+                    .creating(ArtStyle.class)
+                    .fromPrompt("""
+                            Classify the user's art style preference:
+                            - CLASSIC: Traditional detailed ASCII art (default if not specified)
+                            - SIMPLE: Minimalist, small ASCII art
+                            - DETAILED: Complex, large ASCII art with fine details
 
-        String art = switch (style) {
-            case ArtStyle.Classic ignored -> generateClassicBanana();
-            case ArtStyle.Simple ignored -> generateSimpleBanana();
-            case ArtStyle.Detailed ignored -> generateDetailedBanana();
-        };
+                            User request: %s
 
-        return new ArtResponse(art);
+                            Return the appropriate style.""".formatted(request.description()));
+
+            String art = switch (style) {
+                case ArtStyle.Classic ignored -> generateClassicBanana();
+                case ArtStyle.Simple ignored -> generateSimpleBanana();
+                case ArtStyle.Detailed ignored -> generateDetailedBanana();
+            };
+
+            return BananaArtResult.success(art);
+
+        } catch (Exception e) {
+            return BananaArtResult.error("Failed to generate banana art: " + e.getMessage());
+        }
     }
 
     private String generateClassicBanana() {
@@ -97,23 +104,8 @@ public class BananaArtAgent {
             @JsonSubTypes.Type(value = ArtStyle.Detailed.class, name = "DETAILED")
     })
     public sealed interface ArtStyle {
-        record Classic() implements ArtStyle {
-        }
-
-        record Simple() implements ArtStyle {
-        }
-
-        record Detailed() implements ArtStyle {
-        }
-    }
-
-    public record ArtRequest(String description) {
-    }
-
-    public record ArtResponse(String art) implements AgentMessageResponse {
-        @Override
-        public String message() {
-            return art;
-        }
+        record Classic() implements ArtStyle {}
+        record Simple() implements ArtStyle {}
+        record Detailed() implements ArtStyle {}
     }
 }

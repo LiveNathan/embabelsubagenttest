@@ -1,33 +1,34 @@
 package com.example.embabelsubagenttest.agent;
 
-import com.embabel.agent.api.annotation.AchievesGoal;
-import com.embabel.agent.api.annotation.Action;
-import com.embabel.agent.api.annotation.Agent;
-import com.embabel.agent.api.annotation.State;
+import com.embabel.agent.api.annotation.*;
+import com.embabel.agent.api.common.ActionContext;
 import com.embabel.agent.api.common.Ai;
 import com.embabel.agent.api.common.SomeOf;
-import com.embabel.agent.api.invocation.AgentInvocation;
-import com.embabel.agent.core.AgentPlatform;
+import com.embabel.agent.api.common.workflow.control.ScatterGatherBuilder;
 import com.embabel.agent.domain.io.UserInput;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
+import java.util.function.Supplier;
 
+/**
+ * Routes user requests to appropriate specialist agents.
+ * Refactored to use ScatterGatherBuilder for parallel execution and CommandOrchestrator for commands.
+ */
 @Agent(description = "Routes user requests to the appropriate specialist agent")
 public class IntentAgent {
 
-    private final AgentPlatform agentPlatform;
+    private final CommandOrchestrator commandOrchestrator;
+    private final QueryAgent queryAgent;
 
-    public IntentAgent(AgentPlatform agentPlatform) {
-        this.agentPlatform = agentPlatform;
+    public IntentAgent(CommandOrchestrator commandOrchestrator, QueryAgent queryAgent) {
+        this.commandOrchestrator = commandOrchestrator;
+        this.queryAgent = queryAgent;
     }
 
-    public record IntentAgentResponse(String message) {
-    }
+    public record IntentAgentResponse(String message) {}
 
     @Action
     public IntentState classifyAndRoute(UserInput userInput, Ai ai) {
@@ -36,15 +37,16 @@ public class IntentAgent {
                 .fromPrompt(createClassifyIntentPrompt(userInput));
 
         return switch (intent) {
-            case UserIntent.Query query -> new QueryState(query);
-            case UserIntent.Command command -> new CommandState(command, agentPlatform);
+            case UserIntent.Query query -> new QueryState(query, queryAgent);
+            case UserIntent.Command command -> new CommandState(command, commandOrchestrator);
             case UserIntent.Unknown unknown -> new UnknownState(unknown);
             case UserIntent.Multiple multiple -> new MultiIntentState(
                     new MultipleIntents(
                             new UserIntent.Command(multiple.commandDescription()),
                             new UserIntent.Query(multiple.queryQuestion())
                     ),
-                    agentPlatform
+                    commandOrchestrator,
+                    queryAgent
             );
         };
     }
@@ -64,7 +66,7 @@ public class IntentAgent {
                         - "Where do bananas come from?" -> QUERY
                         - "Show me a banana and tell me where they come from" -> MULTIPLE
                         - "Tell me a joke and explain why it's funny" -> MULTIPLE
-                        
+
                         Return:
                         - Command with a clear description of what they want (banana art, fortune, or joke)
                         - Query with the question they're asking
@@ -74,21 +76,15 @@ public class IntentAgent {
     }
 
     @State
-    public sealed interface IntentState {
-    }
+    public sealed interface IntentState {}
 
     @State
-    public record QueryState(UserIntent.Query query) implements IntentState {
+    public record QueryState(UserIntent.Query query, QueryAgent queryAgent) implements IntentState {
         @Action
-        public PreTranslationState processQuery(Ai ai) {
-            QueryAgent.QuerySubagentResponse response = ai.withAutoLlm()
-                    .withId("respond-to-query")
-                    .creating(QueryAgent.QuerySubagentResponse.class)
-                    .fromPrompt("""
-                            You are a helpful assistant. Answer the user's question.
-
-                            User question: %s""".formatted(query.question()));
-            return new PreTranslationState(response.message());
+        public PreFormatState processQuery(ActionContext context) {
+            QueryAgent.QuerySubagentResponse response = RunSubagent
+                    .fromAnnotatedInstance(queryAgent, QueryAgent.QuerySubagentResponse.class);
+            return new PreFormatState(response.message());
         }
     }
 
@@ -100,77 +96,111 @@ public class IntentAgent {
             @JsonSubTypes.Type(value = UserIntent.Multiple.class, name = "MULTIPLE")
     })
     public sealed interface UserIntent {
-        record Command(String description) implements UserIntent {
-        }
-
-        record Query(String question) implements UserIntent {
-        }
-
-        record Unknown(String reason) implements UserIntent {
-        }
-
-        record Multiple(String commandDescription, String queryQuestion) implements UserIntent {
-        }
-    }
-
-    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "commandType")
-    @JsonSubTypes({
-            @JsonSubTypes.Type(value = CommandType.BananaArt.class, name = "BANANA_ART"),
-            @JsonSubTypes.Type(value = CommandType.FortuneCookie.class, name = "FORTUNE_COOKIE"),
-            @JsonSubTypes.Type(value = CommandType.DadJoke.class, name = "DAD_JOKE"),
-            @JsonSubTypes.Type(value = CommandType.Multiple.class, name = "MULTIPLE"),
-            @JsonSubTypes.Type(value = CommandType.Unknown.class, name = "UNKNOWN")
-    })
-    public sealed interface CommandType {
-        record BananaArt() implements CommandType {
-        }
-
-        record FortuneCookie() implements CommandType {
-        }
-
-        record DadJoke() implements CommandType {
-        }
-
-        record Multiple(boolean wantsBanana, boolean wantsFortune, boolean wantsJoke) implements CommandType {
-        }
-
-        record Unknown(String reason) implements CommandType {
-        }
+        record Command(String description) implements UserIntent {}
+        record Query(String question) implements UserIntent {}
+        record Unknown(String reason) implements UserIntent {}
+        record Multiple(String commandDescription, String queryQuestion) implements UserIntent {}
     }
 
     @State
     public record UnknownState(UserIntent.Unknown unknown) implements IntentState {
         @Action
-        public PreTranslationState handleUnknown() {
-            return new PreTranslationState("I'm not sure what you're asking for: " + unknown.reason());
+        public PreFormatState handleUnknown() {
+            return new PreFormatState("I'm not sure what you're asking for: " + unknown.reason());
         }
     }
 
     /**
      * Represents multiple intents that can be processed in parallel.
      * Uses SomeOf to allow optional command and/or query.
-     * All non-null fields will be bound to the blackboard.
      */
     public record MultipleIntents(
             UserIntent.Command command,
             UserIntent.Query query
-    ) implements SomeOf {
+    ) implements SomeOf {}
+
+    /**
+     * Handles multiple intents using ScatterGatherBuilder for parallel execution.
+     */
+    @State
+    public record MultiIntentState(
+            MultipleIntents intents,
+            CommandOrchestrator commandOrchestrator,
+            QueryAgent queryAgent
+    ) implements IntentState {
+        @Action
+        public PreFormatState processMultipleIntents(ActionContext context) {
+            List<Supplier<AgentMessageResponse>> tasks = new ArrayList<>();
+
+            // Add command processing task if present
+            if (intents.command() != null) {
+                final UserIntent.Command cmd = intents.command();
+                tasks.add(() -> RunSubagent
+                        .fromAnnotatedInstance(commandOrchestrator, CommandOrchestrator.CommandOrchestratorResponse.class));
+//                        .asSubProcess(context, cmd));
+            }
+
+            // Add query processing task if present
+            if (intents.query() != null) {
+                final UserIntent.Query qry = intents.query();
+                tasks.add(() -> RunSubagent
+                        .fromAnnotatedInstance(queryAgent, QueryAgent.QuerySubagentResponse.class));
+//                        .asSubProcess(context, qry));
+            }
+
+            // Use ScatterGatherBuilder for parallel execution
+            String combinedMessage = ScatterGatherBuilder
+                    .returning(String.class)
+                    .fromElements(AgentMessageResponse.class)
+                    .generatedBy(tasks)
+                    .consolidatedBy(ctx -> {
+                        List<String> messages = new ArrayList<>();
+                        for (AgentMessageResponse response : ctx.getInput().getResults()) {
+                            messages.add(response.message());
+                        }
+                        return String.join("\n\n", messages);
+                    })
+                    .asSubProcess(context);
+
+            return new PreFormatState(combinedMessage);
+        }
     }
 
+    /**
+     * Handles single commands by delegating to CommandOrchestrator.
+     */
     @State
-    public record PreTranslationState(String message) implements IntentState {
+    public record CommandState(
+            UserIntent.Command command,
+            CommandOrchestrator commandOrchestrator
+    ) implements IntentState {
         @Action
-        public FinalState translate(Ai ai) {
-            String translated = ai.withAutoLlm()
+        public PreFormatState processCommand(ActionContext context) {
+            CommandOrchestrator.CommandOrchestratorResponse response = RunSubagent
+                    .fromAnnotatedInstance(commandOrchestrator, CommandOrchestrator.CommandOrchestratorResponse.class);
+//                    .asSubProcess(context, command);
+            return new PreFormatState(response.message());
+        }
+    }
+
+    /**
+     * Pre-formatting state - can be used to translate or format the message.
+     * Currently translates to Portuguese as in the original implementation.
+     */
+    @State
+    public record PreFormatState(String message) implements IntentState {
+        @Action
+        public FinalState formatResponse(Ai ai) {
+            String formatted = ai.withAutoLlm()
                     .withId("translate-to-portuguese")
                     .generateText("""
                             Translate the following response into Portuguese.
                             Keep the same tone and style, but make it natural Portuguese.
                             If there's ASCII art, keep it intact.
-                            
+
                             Original response:
                             %s""".formatted(message));
-            return new FinalState(translated);
+            return new FinalState(formatted);
         }
     }
 
@@ -180,196 +210,6 @@ public class IntentAgent {
         @Action
         public IntentAgentResponse complete() {
             return new IntentAgentResponse(message);
-        }
-    }
-
-    /**
-     * Handles multiple intents by executing them in parallel using CompletableFuture.
-     * This pattern can be reused for any scenario requiring parallel agent execution.
-     */
-    @State
-    public record MultiIntentState(MultipleIntents intents, AgentPlatform agentPlatform) implements IntentState {
-        @Action
-        public PreTranslationState processMultipleIntents(Ai ai) {
-            List<CompletableFuture<String>> futures = new ArrayList<>();
-
-            // Add command processing task if present
-            if (intents.command() != null) {
-                futures.add(CompletableFuture.supplyAsync(() ->
-                        processCommand(intents.command(), ai)
-                ));
-            }
-
-            // Add query processing task if present
-            if (intents.query() != null) {
-                futures.add(CompletableFuture.supplyAsync(() ->
-                        processQuery(intents.query(), ai)
-                ));
-            }
-
-            // Wait for all tasks to complete and combine results
-            String combinedMessage = futures.stream()
-                    .map(CompletableFuture::join)
-                    .collect(Collectors.joining("\n\n"));
-
-            return new PreTranslationState(combinedMessage);
-        }
-
-        private String processCommand(UserIntent.Command command, Ai ai) {
-            // Classify and route the command
-            CommandType commandType = ai.withAutoLlm()
-                    .creating(CommandType.class)
-                    .fromPrompt("""
-                            Classify the user's command into one of these categories:
-                            - BANANA_ART: User wants ONLY to see ASCII art of bananas
-                            - FORTUNE_COOKIE: User wants ONLY a fortune cookie message or inspirational quote
-                            - DAD_JOKE: User wants ONLY to hear a joke
-                            - MULTIPLE: User wants MORE THAN ONE of the above
-                            - UNKNOWN: Command doesn't match any of the above
-                            
-                            User command: %s
-                            
-                            Return the appropriate type.""".formatted(command.description()));
-
-            return switch (commandType) {
-                case CommandType.BananaArt ignored -> invokeBananaArtAgent(command);
-                case CommandType.FortuneCookie ignored -> invokeFortuneCookieAgent(command);
-                case CommandType.DadJoke ignored -> invokeDadJokeAgent(command);
-                case CommandType.Multiple multiple -> processMultipleCommandsInternal(multiple, command);
-                case CommandType.Unknown unknown -> "Sorry, I don't understand that command: " + unknown.reason();
-            };
-        }
-
-        private String processMultipleCommandsInternal(CommandType.Multiple multiple, UserIntent.Command command) {
-            List<CompletableFuture<String>> futures = new ArrayList<>();
-
-            if (multiple.wantsBanana()) {
-                futures.add(CompletableFuture.supplyAsync(() -> invokeBananaArtAgent(command)));
-            }
-            if (multiple.wantsFortune()) {
-                futures.add(CompletableFuture.supplyAsync(() -> invokeFortuneCookieAgent(command)));
-            }
-            if (multiple.wantsJoke()) {
-                futures.add(CompletableFuture.supplyAsync(() -> invokeDadJokeAgent(command)));
-            }
-
-            return futures.stream()
-                    .map(CompletableFuture::join)
-                    .collect(Collectors.joining("\n\n"));
-        }
-
-        private String processQuery(UserIntent.Query query, Ai ai) {
-            QueryAgent.QuerySubagentResponse response = ai.withAutoLlm()
-                    .withId("respond-to-query")
-                    .creating(QueryAgent.QuerySubagentResponse.class)
-                    .fromPrompt("""
-                            You are a helpful assistant. Answer the user's question.
-                            
-                            User question: %s""".formatted(query.question()));
-            return response.message();
-        }
-
-        private String invokeBananaArtAgent(UserIntent.Command command) {
-            BananaArtAgent.ArtResponse response = AgentInvocation
-                    .create(agentPlatform, BananaArtAgent.ArtResponse.class)
-                    .invoke(new BananaArtAgent.ArtRequest(command.description()));
-            return response.message();
-        }
-
-        private String invokeFortuneCookieAgent(UserIntent.Command command) {
-            FortuneCookieAgent.FortuneResponse response = AgentInvocation
-                    .create(agentPlatform, FortuneCookieAgent.FortuneResponse.class)
-                    .invoke(new FortuneCookieAgent.FortuneRequest(command.description()));
-            return response.message();
-        }
-
-        private String invokeDadJokeAgent(UserIntent.Command command) {
-            DadJokeAgent.JokeResponse response = AgentInvocation
-                    .create(agentPlatform, DadJokeAgent.JokeResponse.class)
-                    .invoke(new DadJokeAgent.JokeRequest(command.description()));
-            return response.message();
-        }
-    }
-
-    @State
-    public record CommandState(UserIntent.Command command, AgentPlatform agentPlatform) implements IntentState {
-        @Action
-        public PreTranslationState processCommand(Ai ai) {
-            CommandType commandType = ai.withAutoLlm()
-                    .creating(CommandType.class)
-                    .fromPrompt("""
-                            Classify the user's command into one of these categories:
-                            - BANANA_ART: User wants ONLY to see ASCII art of bananas
-                            - FORTUNE_COOKIE: User wants ONLY a fortune cookie message or inspirational quote
-                            - DAD_JOKE: User wants ONLY to hear a joke
-                            - MULTIPLE: User wants MORE THAN ONE of the above (e.g., "show banana and tell joke")
-                            - UNKNOWN: Command doesn't match any of the above
-
-                            Examples:
-                            - "Show me a banana" → BANANA_ART
-                            - "Tell me a joke" → DAD_JOKE
-                            - "Show me a banana and tell me a joke" → MULTIPLE (wantsBanana=true, wantsJoke=true)
-                            - "Give me a fortune and a joke" → MULTIPLE (wantsFortune=true, wantsJoke=true)
-                            - "Show banana, tell joke, give fortune" → MULTIPLE (all true)
-                            
-                            User command: %s
-
-                            Return the appropriate type.""".formatted(command.description()));
-
-            String message = switch (commandType) {
-                case CommandType.BananaArt ignored -> invokeBananaArtAgent();
-                case CommandType.FortuneCookie ignored -> invokeFortuneCookieAgent();
-                case CommandType.DadJoke ignored -> invokeDadJokeAgent();
-                case CommandType.Multiple multiple -> processMultipleCommands(multiple);
-                case CommandType.Unknown unknown ->
-                        "Sorry, I don't understand that command: " + unknown.reason();
-            };
-
-            return new PreTranslationState(message);
-        }
-
-        /**
-         * Processes multiple commands in parallel using CompletableFuture.
-         * This allows requests like "show me a banana and tell me a joke" to execute concurrently.
-         */
-        private String processMultipleCommands(CommandType.Multiple multiple) {
-            List<CompletableFuture<String>> futures = new ArrayList<>();
-
-            if (multiple.wantsBanana()) {
-                futures.add(CompletableFuture.supplyAsync(this::invokeBananaArtAgent));
-            }
-            if (multiple.wantsFortune()) {
-                futures.add(CompletableFuture.supplyAsync(this::invokeFortuneCookieAgent));
-            }
-            if (multiple.wantsJoke()) {
-                futures.add(CompletableFuture.supplyAsync(this::invokeDadJokeAgent));
-            }
-
-            // Wait for all commands to complete and combine results
-            return futures.stream()
-                    .map(CompletableFuture::join)
-                    .collect(Collectors.joining("\n\n"));
-        }
-
-        private String invokeBananaArtAgent() {
-            BananaArtAgent.ArtResponse response = AgentInvocation
-                    .create(agentPlatform, BananaArtAgent.ArtResponse.class)
-                    .invoke(new BananaArtAgent.ArtRequest(command.description()));
-            return response.message();
-        }
-
-        private String invokeFortuneCookieAgent() {
-            FortuneCookieAgent.FortuneResponse response = AgentInvocation
-                    .create(agentPlatform, FortuneCookieAgent.FortuneResponse.class)
-                    .invoke(new FortuneCookieAgent.FortuneRequest(command.description()));
-            return response.message();
-        }
-
-        private String invokeDadJokeAgent() {
-            DadJokeAgent.JokeResponse response = AgentInvocation
-                    .create(agentPlatform, DadJokeAgent.JokeResponse.class)
-                    .invoke(new DadJokeAgent.JokeRequest(command.description()));
-            return response.message();
         }
     }
 }
