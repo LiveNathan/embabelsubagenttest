@@ -19,3 +19,14 @@ out/
 .env.DS_Store
 .env
 .envrc
+
+### BROKK'S CONFIGURATION ###
+.brokk/**
+/.brokk/workspace.properties
+/.brokk/sessions/
+/.brokk/dependencies/
+/.brokk/history.zip
+!AGENTS.md
+!.brokk/style.md
+!.brokk/review.md
+!.brokk/project.properties
