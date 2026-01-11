@@ -18,6 +18,7 @@ import java.util.function.Supplier;
 /**
  * Orchestrates command execution by delegating to specialized services.
  * Uses ScatterGatherBuilder for parallel execution when multiple commands are requested.
+ * Single-action pattern to avoid GOAP planning complexity.
  */
 @Agent(description = "Orchestrates command execution by delegating to specialized services")
 public class CommandOrchestrator {
@@ -36,22 +37,43 @@ public class CommandOrchestrator {
     }
 
     /**
-     * Classifies the command to determine which services to invoke.
-     * Uses SomeOf pattern - LLM populates only applicable fields.
+     * Single action that handles the entire command flow:
+     * 1. Classifies the command using LLM (SomeOf pattern)
+     * 2. Executes applicable services in parallel (ScatterGatherBuilder)
+     * 3. Consolidates results into user-facing message
      */
+    @AchievesGoal(description = "Command executed successfully")
     @Action
-    public CommandRequest classifyCommand(ScatterGatherIntentAgent.UserIntent.Command command, Ai ai) {
+    public CommandOrchestratorResponse handleCommand(
+            ScatterGatherIntentAgent.UserIntent.Command command,
+            ActionContext context) {
+
+        // Step 1: Classify command to determine which services to invoke
+        CommandRequest request = classifyCommand(command, context.ai());
+
+        // Step 2: Execute services in parallel
+        CommandResults results = executeCommands(request, context);
+
+        // Step 3: Consolidate and return
+        return summarizeResults(results);
+    }
+
+    /**
+     * Classifies the command using LLM with SomeOf pattern.
+     * LLM populates only applicable fields.
+     */
+    private CommandRequest classifyCommand(ScatterGatherIntentAgent.UserIntent.Command command, Ai ai) {
         return ai.withAutoLlm()
                 .withId("classify-command")
                 .creating(CommandRequest.class)
                 .fromPrompt("""
                         Analyze the user's command and determine which services should be invoked.
                         You can populate one or more of the following fields:
-                        
+
                         - bananaArt: If the user wants ASCII art of a banana
                         - fortune: If the user wants a fortune cookie message or inspirational quote
                         - joke: If the user wants a dad joke
-                        
+
                         User command: %s
                         
                         Examples:
@@ -68,8 +90,7 @@ public class CommandOrchestrator {
      * Executes commands in parallel using ScatterGatherBuilder.
      * Only invokes services where the request field is non-null.
      */
-    @Action
-    public CommandResults executeCommands(CommandRequest request, ActionContext context) {
+    private CommandResults executeCommands(CommandRequest request, ActionContext context) {
         if (request.isEmpty()) {
             return new CommandResults(null, null, null);
         }
@@ -135,11 +156,8 @@ public class CommandOrchestrator {
 
     /**
      * Consolidates results into a user-facing message.
-     * Marks the goal as achieved for the agent.
      */
-    @AchievesGoal(description = "Command executed successfully")
-    @Action
-    public CommandOrchestratorResponse summarizeResults(CommandResults results) {
+    private CommandOrchestratorResponse summarizeResults(CommandResults results) {
         List<String> messages = new ArrayList<>();
         List<String> errors = new ArrayList<>();
 

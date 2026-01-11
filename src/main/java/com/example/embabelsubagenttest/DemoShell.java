@@ -12,14 +12,6 @@ import org.springframework.shell.standard.ShellMethod;
 @ShellComponent
 record DemoShell(AgentPlatform agentPlatform) {
 
-    @ShellMethod("Scatter Gather Intent (Parallel GOAP)")
-    String intentScatterGather(final String content) {
-        ScatterGatherIntentAgent.IntentAgentResponse response = AgentInvocation
-                .create(agentPlatform, ScatterGatherIntentAgent.IntentAgentResponse.class)
-                .invoke(new UserInput(content));
-        return response.message();
-    }
-
     @ShellMethod("Hierarchical Intent (Main)")
     String intentHierarchical(final String content) {
         HierarchicalIntentAgent.IntentAgentResponse response = AgentInvocation
@@ -32,6 +24,14 @@ record DemoShell(AgentPlatform agentPlatform) {
     String intentStatePattern(final String content) {
         StatePatternIntentAgent.IntentAgentResponse response = AgentInvocation
                 .create(agentPlatform, StatePatternIntentAgent.IntentAgentResponse.class)
+                .invoke(new UserInput(content));
+        return response.message();
+    }
+
+    @ShellMethod("Scatter Gather Intent (Parallel GOAP)")
+    String intentScatterGather(final String content) {
+        ScatterGatherIntentAgent.IntentAgentResponse response = AgentInvocation
+                .create(agentPlatform, ScatterGatherIntentAgent.IntentAgentResponse.class)
                 .invoke(new UserInput(content));
         return response.message();
     }
