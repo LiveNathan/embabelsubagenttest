@@ -1,17 +1,14 @@
-package com.example.embabelsubagenttest.agent;
+package com.example.embabelsubagenttest.agent.hierarchical;
 
 import com.embabel.agent.api.annotation.AchievesGoal;
 import com.embabel.agent.api.annotation.Action;
 import com.embabel.agent.api.annotation.Agent;
 
 @Agent(description = "Creates ASCII art of bananas")
-public class BananaArtAgent {
-    public record BananaArtResponse(String message) implements CommandAgent.CommandSubagentResponse {
-    }
-
+public class HierarchicalBananaArtAgent {
     @AchievesGoal(description = "ASCII art created")
     @Action
-    public BananaArtResponse createBananaArt(CommandAgent.CommandIntent.BananaArt request) {
+    public BananaArtResponse createBananaArt(HierarchicalCommandAgent.CommandIntent.BananaArt request) {
         String art = """
                  _
                 //\\
@@ -29,5 +26,8 @@ public class BananaArtAgent {
                 hh                `--..____..--'
                 """;
         return new BananaArtResponse(art);
+    }
+
+    public record BananaArtResponse(String message) implements HierarchicalCommandAgent.CommandSubagentResponse {
     }
 }

@@ -1,4 +1,4 @@
-package com.example.embabelsubagenttest.agent;
+package com.example.embabelsubagenttest.agent.hierarchical;
 
 import com.embabel.agent.api.annotation.AchievesGoal;
 import com.embabel.agent.api.annotation.Action;
@@ -6,20 +6,20 @@ import com.embabel.agent.api.annotation.Agent;
 import com.embabel.agent.api.common.Ai;
 
 @Agent(description = "Tells dad jokes")
-public class DadJokeAgent {
-    public record DadJokeResponse(String message) implements CommandAgent.CommandSubagentResponse {
-    }
-
-    @AchievesGoal(description = "Dad joke delivered")
+public class HierarchicalDadJokeAgent {
+    @AchievesGoal(description = "Dad joke told")
     @Action
-    public DadJokeResponse tellJoke(CommandAgent.CommandIntent.DadJoke request, Ai ai) {
+    public JokeResponse tellJoke(HierarchicalCommandAgent.CommandIntent.DadJoke request, Ai ai) {
         return ai.withAutoLlm()
                 .withId("tell-dad-joke")
-                .creating(DadJokeResponse.class)
+                .creating(JokeResponse.class)
                 .fromPrompt("""
                         Tell a classic dad joke about programming or technology.
                         Make it wholesome and groan-worthy.
                         Include both the setup and punchline.
                         """);
+    }
+
+    public record JokeResponse(String message) implements HierarchicalCommandAgent.CommandSubagentResponse {
     }
 }

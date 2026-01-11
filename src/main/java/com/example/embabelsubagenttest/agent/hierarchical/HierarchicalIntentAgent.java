@@ -1,4 +1,4 @@
-package com.example.embabelsubagenttest.agent;
+package com.example.embabelsubagenttest.agent.hierarchical;
 
 import com.embabel.agent.api.annotation.AchievesGoal;
 import com.embabel.agent.api.annotation.Action;
@@ -19,18 +19,15 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Agent(description = "Routes user requests to the appropriate specialist agent")
-public class IntentAgent {
-    private final QueryAgent queryAgent;
-    private final CommandAgent commandAgent;
+public class HierarchicalIntentAgent {
+    private final HierarchicalCommandAgent commandAgent;
+    private final HierarchicalQueryAgent queryAgent;
     private final AgentPlatform agentPlatform;
 
-    public IntentAgent(QueryAgent queryAgent, CommandAgent commandAgent, AgentPlatform agentPlatform) {
-        this.queryAgent = queryAgent;
+    public HierarchicalIntentAgent(HierarchicalCommandAgent commandAgent, HierarchicalQueryAgent queryAgent, AgentPlatform agentPlatform) {
         this.commandAgent = commandAgent;
+        this.queryAgent = queryAgent;
         this.agentPlatform = agentPlatform;
-    }
-
-    public record IntentAgentResponse(String message) {
     }
 
     String createClassifyIntentPrompt(UserInput userInput) {
@@ -118,6 +115,26 @@ public class IntentAgent {
         return RunSubagent.fromAnnotatedInstance(queryAgent, AgentMessageResponse.class);
     }
 
+    @Action
+    public TranslatedResponse translateToPortuguese(AgentMessageResponse subagentResponse, Ai ai) {
+        return ai.withAutoLlm()
+                .withId("translate-to-portuguese")
+                .creating(TranslatedResponse.class)
+                .fromPrompt("""
+                        Translate the following response into Portuguese.
+                        Keep the same tone and style, but make it natural Portuguese.
+                        If there's ASCII art, keep it intact.
+                        
+                        Original response:
+                        %s""".formatted(subagentResponse.message()));
+    }
+
+    @AchievesGoal(description = "User request satisfied")
+    @Action
+    public IntentAgentResponse done(TranslatedResponse translatedResponse) {
+        return new IntentAgentResponse(translatedResponse.message());
+    }
+
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "intent")
     @JsonSubTypes({
             @JsonSubTypes.Type(value = UserIntent.Command.class, name = "COMMAND"),
@@ -135,30 +152,13 @@ public class IntentAgent {
         }
     }
 
+    public record IntentAgentResponse(String message) {
+    }
+
     public record CompositeIntentResult(String message, int responseCount) implements AgentMessageResponse {
     }
 
     public record TranslatedResponse(String message) {
-    }
-
-    @Action
-    public TranslatedResponse translateToPortuguese(AgentMessageResponse subagentResponse, Ai ai) {
-        return ai.withAutoLlm()
-                .withId("translate-to-portuguese")
-                .creating(TranslatedResponse.class)
-                .fromPrompt("""
-                        Translate the following response into Portuguese.
-                        Keep the same tone and style, but make it natural Portuguese.
-                        If there's ASCII art, keep it intact.
-
-                        Original response:
-                        %s""".formatted(subagentResponse.message()));
-    }
-
-    @AchievesGoal(description = "User request satisfied")
-    @Action
-    public IntentAgentResponse done(TranslatedResponse translatedResponse) {
-        return new IntentAgentResponse(translatedResponse.message());
     }
 
 
