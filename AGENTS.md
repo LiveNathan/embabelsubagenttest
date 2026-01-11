@@ -1,58 +1,73 @@
-# Embabelsubagenttest Project Context
+# Embabel Agent Design Patterns
 
-## Project Overview
-**Embabelsubagenttest** is a Java-based project utilizing the **Embabel framework** (version 0.3.1) and **Spring Boot** (version 3.5.9). It serves as a template and testing ground for developing AI agents capable of interacting with Large Language Models (LLMs).
+This project demonstrates three advanced agent composition patterns using the **Embabel framework**. These designs are implemented in separate packages to allow side-by-side comparison.
 
-The project demonstrates:
-*   Creating Agents (`@Agent`) with specific goals and personas.
-*   Defining Actions (`@Action`) that utilize the `Ai` interface for text generation and structured object creation.
-*   Integration with LLM providers (OpenAI, Anthropic, Bedrock).
-*   Testing strategies for non-deterministic AI outputs.
+## Architecture Patterns
 
-## Technology Stack
-*   **Language:** Java 25 (Forward-looking version, specified in `pom.xml`)
-*   **Frameworks:** Spring Boot 3.5.9, Embabel Agent Framework 0.3.1
-*   **Build Tool:** Apache Maven (Wrapper available: `mvnw`)
-*   **Testing:** JUnit 5, Spring Boot Test, Embabel Test utilities
+### 1. Scatter-Gather (Parallel GOAP)
+**Package:** `com.example.embabelsubagenttest.agent.scattergather`
 
-## Key Files & Directories
+This pattern optimizes for performance by executing independent sub-tasks in parallel.
 
-*   `pom.xml`: Project dependencies and configuration. Defines profiles for different model providers (openai, anthropic).
-*   `scripts/shell.sh`: The primary entry point to run the interactive agent shell.
-*   `src/main/java/com/example/embabelsubagenttest/agent/WriteAndReviewAgent.java`: Core example agent. Demonstrates:
-    *   `@Agent` annotation.
-    *   `RoleGoalBackstory` and `Persona` definitions.
-    *   `@Action` methods (`craftStory`, `reviewStory`).
-    *   Using the `Ai` interface to chain LLM calls.
-*   `src/test/java/`: Contains Unit (`WriteAndReviewAgentTest.java`) and Integration (`WriteAndReviewAgentIntegrationTest.java`) tests.
-*   `docs/llm-docs.md`: Documentation for configuring LLM providers (e.g., Amazon Bedrock).
+*   **Entry Point:** `ScatterGatherIntentAgent`
+*   **Shell Command:** `intent-scatter-gather "Show me a banana and tell me a joke"`
+*   **Key Components:**
+    *   `CommandOrchestrator`: Uses `ScatterGatherBuilder` to execute multiple specialist services concurrently.
+    *   `ScatterGatherQueryAgent`: Handles general queries.
+    *   **Services:** `BananaArtService`, `FortuneService`, `JokeService` (Plain Spring `@Component`s, not agents).
+*   **Best For:** Scenarios where a single request can be broken down into multiple independent actions that don't depend on each other's output.
 
-## Development Workflow
+### 2. Hierarchical (Supervisor/Subagent)
+**Package:** `com.example.embabelsubagenttest.agent.hierarchical`
 
-### Building the Project
-Use the Maven wrapper to build the application:
-```bash
-./mvnw clean package
-```
+A classic recursive delegation pattern where a supervisor agent routes tasks to specialized sub-agents.
 
-### Running the Agent Shell
-The project includes a script to launch the interactive Embabel shell:
-```bash
-./scripts/shell.sh
-```
-*Note: Ensure `JAVA_HOME` is set to a compatible Java version (25).*
+*   **Entry Point:** `HierarchicalIntentAgent`
+*   **Shell Command:** `intent-hierarchical "Show me a banana"`
+*   **Key Components:**
+    *   `HierarchicalIntentAgent`: Top-level router.
+    *   `HierarchicalCommandAgent`: Secondary router for commands.
+    *   **Sub-Agents:** `HierarchicalBananaArtAgent`, `HierarchicalFortuneCookieAgent`, `HierarchicalDadJokeAgent`.
+*   **Best For:** Complex domains with deep taxonomy where tasks require specialized handling logic encapsulated in distinct agents.
 
-### Testing
-Run unit and integration tests:
-```bash
-./mvnw test
-```
-Tests utilize `FakeOperationContext` for unit testing (isolating from real LLMs) and `EmbabelMockitoIntegrationTest` for integration testing.
+### 3. State Pattern (State Machine)
+**Package:** `com.example.embabelsubagenttest.agent.statepattern`
 
-### Configuration
-*   **API Keys:** Set environment variables `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` to enable respective profiles.
-*   **Properties:** `src/main/resources/application.properties` controls agent settings (e.g., word counts).
-*   **Model Selection:** Can be configured via profiles or explicitly in `application.properties` (e.g., `embabel.models.default-llm`).
+Uses Embabel's `@State` annotation to model the conversation as a state machine.
+
+*   **Entry Point:** `StatePatternIntentAgent`
+*   **Shell Command:** `intent-state-pattern "Tell me a joke"`
+*   **Key Components:**
+    *   `IntentState` (Sealed Interface): Defines the states (Query, Command, Multiple, Unknown).
+    *   `CommandState`, `QueryState`: Records implementing `IntentState` with `@Action` methods.
+    *   `MultiIntentState`: Handles complex flows within the state machine.
+*   **Best For:** Complex multi-turn conversations or workflows where the valid actions depend strictly on the current context/state of the interaction.
+
+## Running the Examples
+
+1.  **Build the project:**
+    ```bash
+    ./mvnw clean package
+    ```
+
+2.  **Start the Agent Shell:**
+    ```bash
+    ./scripts/shell.sh
+    ```
+
+3.  **Invoke the Agents:**
+    Inside the shell, use the specific commands for each pattern:
+
+    ```bash
+    # Parallel execution
+    intent-scatter-gather "Show me a banana and tell me a joke"
+
+    # Hierarchical routing
+    intent-hierarchical "Show me a banana"
+
+    # State machine flow
+    intent-state-pattern "Tell me a joke"
+    ```
 
 ## Coding Conventions
 *   **Agents:** Define agents as Spring beans annotated with `@Agent`.
