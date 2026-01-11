@@ -5,9 +5,17 @@ import com.embabel.agent.api.annotation.Action;
 import com.embabel.agent.api.annotation.Agent;
 import com.embabel.agent.api.annotation.RunSubagent;
 import com.embabel.agent.api.common.Ai;
+import com.embabel.agent.core.AgentPlatform;
+import com.embabel.agent.core.AgentProcess;
+import com.embabel.agent.core.ProcessOptions;
 import com.embabel.agent.domain.io.UserInput;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 /**
  * Routes user requests to appropriate specialist agents.
@@ -19,10 +27,12 @@ public class ScatterGatherIntentAgent {
 
     private final CommandOrchestrator commandOrchestrator;
     private final ScatterGatherQueryAgent queryAgent;
+    private final AgentPlatform agentPlatform;
 
-    public ScatterGatherIntentAgent(CommandOrchestrator commandOrchestrator, ScatterGatherQueryAgent queryAgent) {
+    public ScatterGatherIntentAgent(CommandOrchestrator commandOrchestrator, ScatterGatherQueryAgent queryAgent, AgentPlatform agentPlatform) {
         this.commandOrchestrator = commandOrchestrator;
         this.queryAgent = queryAgent;
+        this.agentPlatform = agentPlatform;
     }
 
     @Action
@@ -66,11 +76,60 @@ public class ScatterGatherIntentAgent {
                     .fromAnnotatedInstance(queryAgent, ScatterGatherQueryAgent.QuerySubagentResponse.class);
             case UserIntent.Unknown unknown ->
                     new UnknownResponse("I'm not sure what you're asking for: " + unknown.reason());
-            case UserIntent.Multiple multiple -> new MultipleIntentsResponse(
-                    "Multiple intents detected: " + multiple.commandDescription() + " AND " + multiple.queryQuestion() +
-                    ". Please ask for one thing at a time."
-            );
+            case UserIntent.Multiple multiple -> handleMultipleIntents(multiple);
         };
+    }
+
+    @Action
+    public MultipleIntentsResult handleMultipleIntents(UserIntent.Multiple multiple) {
+        List<CompletableFuture<AgentMessageResponse>> tasks = new ArrayList<>();
+
+        // Add command task if present
+        if (multiple.commandDescription() != null && !multiple.commandDescription().isBlank()) {
+            tasks.add(CompletableFuture.supplyAsync(() -> {
+                var agentWrapper = agentPlatform.agents().stream()
+                        .filter(a -> a.getName().equals(commandOrchestrator.getClass().getSimpleName()))
+                        .findFirst()
+                        .orElseThrow(() -> new IllegalStateException("CommandOrchestrator wrapper not found"));
+
+                AgentProcess agentProcess = agentPlatform.createAgentProcessFrom(
+                        agentWrapper,
+                        ProcessOptions.DEFAULT,
+                        new UserIntent.Command(multiple.commandDescription())
+                );
+                AgentProcess completedProcess = agentProcess.run();
+                return completedProcess.last(AgentMessageResponse.class);
+            }));
+        }
+
+        // Add query task if present
+        if (multiple.queryQuestion() != null && !multiple.queryQuestion().isBlank()) {
+            tasks.add(CompletableFuture.supplyAsync(() -> {
+                var agentWrapper = agentPlatform.agents().stream()
+                        .filter(a -> a.getName().equals(queryAgent.getClass().getSimpleName()))
+                        .findFirst()
+                        .orElseThrow(() -> new IllegalStateException("ScatterGatherQueryAgent wrapper not found"));
+
+                AgentProcess agentProcess = agentPlatform.createAgentProcessFrom(
+                        agentWrapper,
+                        ProcessOptions.DEFAULT,
+                        new UserIntent.Query(multiple.queryQuestion())
+                );
+                AgentProcess completedProcess = agentProcess.run();
+                return completedProcess.last(AgentMessageResponse.class);
+            }));
+        }
+
+        // Wait for all tasks to complete and consolidate results
+        List<AgentMessageResponse> responses = tasks.stream()
+                .map(CompletableFuture::join)
+                .toList();
+
+        String consolidatedMessage = responses.stream()
+                .map(AgentMessageResponse::message)
+                .collect(Collectors.joining("\n\n---\n\n"));
+
+        return new MultipleIntentsResult(consolidatedMessage, responses.size());
     }
 
     @Action
@@ -124,6 +183,6 @@ public class ScatterGatherIntentAgent {
     public record UnknownResponse(String message) implements AgentMessageResponse {
     }
 
-    public record MultipleIntentsResponse(String message) implements AgentMessageResponse {
+    public record MultipleIntentsResult(String message, int responseCount) implements AgentMessageResponse {
     }
 }

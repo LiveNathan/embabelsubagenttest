@@ -13,11 +13,11 @@ public class HierarchicalDadJokeAgent {
         return ai.withAutoLlm()
                 .withId("tell-dad-joke")
                 .creating(JokeResponse.class)
-                .fromPrompt("""
-                        Tell a classic dad joke about programming or technology.
+                .fromPrompt(String.format("""
+                        Tell a classic dad joke about the topic: %s
                         Make it wholesome and groan-worthy.
                         Include both the setup and punchline.
-                        """);
+                        """, request.description()));
     }
 
     public record JokeResponse(String message) implements HierarchicalCommandAgent.CommandSubagentResponse {
