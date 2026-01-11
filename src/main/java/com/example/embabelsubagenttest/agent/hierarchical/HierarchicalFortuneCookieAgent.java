@@ -13,11 +13,13 @@ public class HierarchicalFortuneCookieAgent {
         return ai.withAutoLlm()
                 .withId("generate-fortune")
                 .creating(FortuneResponse.class)
-                .fromPrompt("""
-                        Generate a creative and inspiring fortune cookie message.
+                .fromPrompt(String.format("""
+                        Generate a creative and inspiring fortune cookie message based on the user's description.
                         Make it wise, optimistic, and slightly mysterious.
                         Keep it under 30 words.
-                        """);
+                        
+                        User description: %s
+                        """, request.description()));
     }
 
     public record FortuneResponse(String message) implements HierarchicalCommandAgent.CommandSubagentResponse {

@@ -17,3 +17,5 @@ out/
 **/*.log
 .envrc
 .env.DS_Store
+.env
+.envrc
