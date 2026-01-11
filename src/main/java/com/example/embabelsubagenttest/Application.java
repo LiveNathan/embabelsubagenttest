@@ -15,12 +15,25 @@
  */
 package com.example.embabelsubagenttest;
 
+import com.example.embabelsubagenttest.agent.orchestrated.StudioConsole;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
 
 @SpringBootApplication
 class Application {
     public static void main(String[] args) {
         SpringApplication.run(Application.class, args);
+    }
+
+    @Bean
+    public StudioConsole studioConsole() {
+        StudioConsole console = new StudioConsole();
+        for (int i = 1; i <= 8; i++) {
+            console.setChannelName(i, "Channel " + i);
+            console.setChannelColor(i, "Gray");
+            console.setChannelRoute(i, "Main Out");
+        }
+        return console;
     }
 }
