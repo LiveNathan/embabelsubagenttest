@@ -4,6 +4,7 @@ import com.embabel.agent.api.annotation.AchievesGoal;
 import com.embabel.agent.api.annotation.Action;
 import com.embabel.agent.api.annotation.Agent;
 import com.embabel.agent.api.common.ActionContext;
+import com.example.embabelsubagenttest.agent.orchestrated.OrchestratedIntentAgent.UserIntent;
 import com.example.embabelsubagenttest.agent.orchestrated.OrchestratedTypes.OrchestratedRequest;
 import com.example.embabelsubagenttest.agent.orchestrated.OrchestratedTypes.OrchestratedResults;
 import com.example.embabelsubagenttest.agent.scattergather.CommandTypes.BananaArtResult;
@@ -47,7 +48,7 @@ public class OrchestratedCommandAgent {
      */
     @AchievesGoal(description = "Command processed and results summarized")
     @Action
-    public OrchestratedResponse handleCommand(String command, ActionContext context) {
+    public OrchestratedResponse handleCommand(UserIntent.Command command, ActionContext context) {
         // Step 1: Classify command using LLM
         OrchestratedRequest request = context.ai().withAutoLlm()
                 .withId("classify-orchestrated-request")
@@ -62,7 +63,7 @@ public class OrchestratedCommandAgent {
 
                         User command: %s
 
-                        Provide a description for each applicable service. Leave others null.""".formatted(command));
+                        Provide a description for each applicable service. Leave others null.""".formatted(command.description()));
 
         if (request.isEmpty()) {
             return new OrchestratedResponse("I didn't detect any specific requests for bananas, fortunes, or jokes.");
