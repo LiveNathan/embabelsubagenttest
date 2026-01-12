@@ -13,6 +13,8 @@ import com.example.embabelsubagenttest.service.BananaArtService;
 import com.example.embabelsubagenttest.service.FortuneService;
 import com.example.embabelsubagenttest.service.JokeService;
 
+import com.example.embabelsubagenttest.agent.AgentMessageResponse;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -126,5 +128,5 @@ public class OrchestratedCommandAgent {
         return new OrchestratedResponse(content);
     }
 
-    public record OrchestratedResponse(String message) {}
+    public record OrchestratedResponse(String message) implements AgentMessageResponse {}
 }

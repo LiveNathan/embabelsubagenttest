@@ -1,8 +1,11 @@
 package com.example.embabelsubagenttest.agent.orchestrated;
 
+import com.embabel.agent.api.annotation.RunSubagent;
+import com.embabel.agent.api.annotation.AchievesGoal;
 import com.embabel.agent.api.annotation.Action;
 import com.embabel.agent.api.annotation.Agent;
 import com.embabel.agent.api.common.ActionContext;
+import com.example.embabelsubagenttest.agent.AgentMessageResponse;
 
 /**
  * Top-level agent that classifies user intent and routes to either
@@ -22,21 +25,22 @@ public class OrchestratedIntentAgent {
     }
 
     @Action
-    public FinalResponse routeIntent(String userMessage, ActionContext context) {
+    public Object routeIntent(String userMessage, ActionContext context) {
         UserIntent intent = classifyIntent(userMessage, context);
 
-        String message = switch (intent) {
-            case UserIntent.Command c -> {
-                var response = commandAgent.handleCommand(c.description(), context);
-                yield response.message();
-            }
-            case UserIntent.Query q -> {
-                var response = queryAgent.answerUserQuestion(q.question(), context.ai());
-                yield response.answer();
-            }
-            case UserIntent.Unknown u -> u.message();
+        return switch (intent) {
+            case UserIntent.Command c ->
+                    RunSubagent.fromAnnotatedInstance(commandAgent, OrchestratedCommandAgent.OrchestratedResponse.class);
+            case UserIntent.Query q ->
+                    RunSubagent.fromAnnotatedInstance(queryAgent, OrchestratedQueryAgent.QueryResponse.class);
+            case UserIntent.Unknown u -> new OrchestratedCommandAgent.OrchestratedResponse(u.message());
         };
-        return new FinalResponse(message);
+    }
+
+    @AchievesGoal(description = "User request satisfied")
+    @Action
+    public FinalResponse done(AgentMessageResponse response) {
+        return new FinalResponse(response.message());
     }
 
     public record FinalResponse(String message) {}
