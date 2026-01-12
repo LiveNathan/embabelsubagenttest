@@ -4,8 +4,11 @@ import com.embabel.agent.api.annotation.RunSubagent;
 import com.embabel.agent.api.annotation.AchievesGoal;
 import com.embabel.agent.api.annotation.Action;
 import com.embabel.agent.api.annotation.Agent;
-import com.embabel.agent.api.common.ActionContext;
+import com.embabel.agent.api.common.Ai;
+import com.embabel.agent.domain.io.UserInput;
 import com.example.embabelsubagenttest.agent.AgentMessageResponse;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 /**
  * Top-level agent that classifies user intent and routes to either
@@ -25,15 +28,32 @@ public class OrchestratedIntentAgent {
     }
 
     @Action
-    public Object routeIntent(String userMessage, ActionContext context) {
-        UserIntent intent = classifyIntent(userMessage, context);
+    public UserIntent classifyIntent(UserInput userInput, Ai ai) {
+        return ai.withAutoLlm()
+                .withId("classify-orchestrated-intent")
+                .creating(UserIntent.class)
+                .fromPrompt("""
+                        Classify the user's intent into one of the following:
 
+                        - COMMAND: The user wants to perform an action like seeing a banana, hearing a joke, or getting a fortune.
+                        - QUERY: The user is asking a general question or seeking information.
+                        - UNKNOWN: The intent is unclear.
+
+                        For COMMAND, provide a description of what they want.
+                        For QUERY, provide the question they're asking.
+                        For UNKNOWN, provide a message explaining why it's unclear.
+
+                        User message: %s""".formatted(userInput.getContent()));
+    }
+
+    @Action
+    public AgentMessageResponse routeIntent(UserIntent intent) {
         return switch (intent) {
             case UserIntent.Command c ->
                     RunSubagent.fromAnnotatedInstance(commandAgent, OrchestratedCommandAgent.OrchestratedResponse.class);
             case UserIntent.Query q ->
                     RunSubagent.fromAnnotatedInstance(queryAgent, OrchestratedQueryAgent.QueryResponse.class);
-            case UserIntent.Unknown u -> new OrchestratedCommandAgent.OrchestratedResponse(u.message());
+            case UserIntent.Unknown u -> new UnknownResponse(u.message());
         };
     }
 
@@ -45,20 +65,14 @@ public class OrchestratedIntentAgent {
 
     public record FinalResponse(String message) {}
 
-    private UserIntent classifyIntent(String message, ActionContext context) {
-        return context.ai().withAutoLlm()
-                .withId("classify-orchestrated-intent")
-                .creating(UserIntent.class)
-                .fromPrompt("""
-                        Classify the user's intent into one of the following:
+    public record UnknownResponse(String message) implements AgentMessageResponse {}
 
-                        - Command: The user wants to perform an action like seeing a banana, hearing a joke, or getting a fortune.
-                        - Query: The user is asking a general question or seeking information.
-                        - Unknown: The intent is unclear.
-
-                        User message: %s""".formatted(message));
-    }
-
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "intent")
+    @JsonSubTypes({
+            @JsonSubTypes.Type(value = UserIntent.Command.class, name = "COMMAND"),
+            @JsonSubTypes.Type(value = UserIntent.Query.class, name = "QUERY"),
+            @JsonSubTypes.Type(value = UserIntent.Unknown.class, name = "UNKNOWN")
+    })
     public sealed interface UserIntent {
         record Command(String description) implements UserIntent {}
         record Query(String question) implements UserIntent {}
