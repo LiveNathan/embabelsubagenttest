@@ -90,7 +90,7 @@ public class HierarchicalIntentAgent {
                         ProcessOptions.DEFAULT,
                         query
                 );
-                var completedProcess = agentProcess.run();
+                AgentProcess completedProcess = agentProcess.run();
                 return completedProcess.last(AgentMessageResponse.class);
             }));
         }
@@ -148,7 +148,7 @@ public class HierarchicalIntentAgent {
         record Query(String question) implements UserIntent {
         }
 
-        record Composite(java.util.List<Command> commands, java.util.List<Query> queries) implements UserIntent {
+        record Composite(List<Command> commands, List<Query> queries) implements UserIntent {
         }
     }
 
@@ -160,6 +160,5 @@ public class HierarchicalIntentAgent {
 
     public record TranslatedResponse(String message) {
     }
-
 
 }

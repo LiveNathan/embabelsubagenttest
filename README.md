@@ -50,6 +50,23 @@ Uses Embabel's `@State` annotation to model the conversation as a state machine.
 * **Best For:** Complex multi-turn conversations or workflows where the valid actions depend strictly on the current
   context/state of the interaction.
 
+### 4. Orchestrated (Parallel Service Orchestration)
+
+**Package:** `com.example.embabelsubagenttest.agent.orchestrated`
+
+Refactored pattern that routes requests to an orchestrator which dynamically selects and executes services in parallel
+using `CompletableFuture`.
+
+* **Entry Point:** `OrchestratedIntentAgent`
+* **Shell Command:** `intent-orchestrated "Show me a banana and tell me a joke"`
+* **Key Components:**
+    * `OrchestratedIntentAgent`: Routes to Command or Query agents.
+    * `OrchestratedCommandAgent`: Uses LLM to populate `OrchestratedRequest` (implementing `SomeOf`) to determine needed
+      services, then runs them in parallel.
+    * `OrchestratedQueryAgent`: Handles general queries.
+* **Best For:** Scenarios requiring dynamic selection and parallel execution of independent services based on natural
+  language intent.
+
 ## Running the Examples
 
 1. **Build the project:**
@@ -74,6 +91,9 @@ Uses Embabel's `@State` annotation to model the conversation as a state machine.
 
    # State machine flow
    intent-state-pattern "Tell me a joke"
+
+   # Orchestrated flow
+   intent-orchestrated "Show me a banana and tell me a joke"
    ```
 
 ## Coding Conventions
