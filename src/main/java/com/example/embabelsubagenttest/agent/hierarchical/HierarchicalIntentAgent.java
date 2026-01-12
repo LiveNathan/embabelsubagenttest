@@ -63,7 +63,7 @@ public class HierarchicalIntentAgent {
 
         for (UserIntent.Command command : composite.commands()) {
             tasks.add(CompletableFuture.supplyAsync(() -> {
-                var agentWrapper = agentPlatform.agents().stream()
+                com.embabel.agent.core.Agent agentWrapper = agentPlatform.agents().stream()
                         .filter(a -> a.getName().equals(commandAgent.getClass().getSimpleName()))
                         .findFirst()
                         .orElseThrow(() -> new IllegalStateException("CommandAgent wrapper not found"));
