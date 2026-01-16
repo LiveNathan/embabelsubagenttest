@@ -18,7 +18,7 @@
 
     <properties>
         <java.version>25</java.version>
-        <embabel-agent.version>0.3.1</embabel-agent.version>
+        <embabel-agent.version>0.3.2</embabel-agent.version>
     </properties>
 
     <dependencies>

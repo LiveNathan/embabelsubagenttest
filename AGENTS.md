@@ -1,6 +1,7 @@
 # Embabel Agent Design Patterns
 
-This project demonstrates three advanced agent composition patterns using the **Embabel framework**. These designs are implemented in separate packages to allow side-by-side comparison.
+This project demonstrates five advanced agent composition patterns using the **Embabel framework**. These designs are
+implemented in separate packages to allow side-by-side comparison.
 
 ## Architecture Patterns
 
@@ -60,6 +61,30 @@ using `CompletableFuture`.
 * **Best For:** Scenarios requiring dynamic selection and parallel execution of independent services based on natural
   language intent.
 
+### 5. Chatbot (Utility AI Multi-Turn Conversation)
+
+**Package:** `com.example.embabelsubagenttest.agent.chatbot`
+
+Uses Embabel's native chatbot architecture with Utility AI planning, optimized for multi-turn conversations
+as described in the [Embabel Chatbot documentation](docs/build-chatbot.md).
+
+* **Entry Point:** `ChatbotActions` (with `@EmbabelComponent`)
+* **Shell Commands:**
+    * `intent-chatbot "Show me a banana"` - Single message
+    * `chat` - Built-in multi-turn conversation mode
+* **Key Components:**
+    * `ChatbotActions`: `@EmbabelComponent` with actions triggered by `UserMessage`
+    * `ChatbotConfiguration`: Creates `AgentProcessChatbot.utilityFromPlatform()` for Utility AI planning
+    * `ChatbotTypes`: Domain types for intent classification
+* **Key Features:**
+    * `trigger = UserMessage.class` - Actions fire on user messages
+    * `canRerun = true` - Allows repeated execution for multi-turn chat
+    * `context.sendMessage()` - Sends responses back to conversation
+    * Conversation history maintained in blackboard
+    * Utility AI selects best action based on cost/value scoring
+* **Best For:** Multi-turn conversational interfaces, chatbots, and scenarios where action selection
+  should be based on scoring rather than explicit routing.
+
 ## Running the Examples
 
 1.  **Build the project:**
@@ -87,6 +112,12 @@ using `CompletableFuture`.
 
     # Orchestrated flow
     intent-orchestrated "Show me a banana and tell me a joke"
+
+    # Chatbot (single message)
+    intent-chatbot "Show me a banana and tell me a joke"
+
+    # Chatbot (multi-turn conversation)
+    chat
     ```
 
 ## Coding Conventions
